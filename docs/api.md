@@ -1,13 +1,14 @@
 # API REST — contrato inicial propuesto
 
-**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato de diseño, no OpenAPI generado ni endpoints implementados. JSON salvo cuerpo binario de subida/descarga.
+**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; solo `/health/live` se implementó en el esqueleto de API. Las 18 rutas funcionales no están implementadas. El OpenAPI actual solo incluye liveness y no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
 
 ## Rutas
 
-Todas las tasas numéricas son propuestas de `docs/limites.md` y requieren aprobación. Mutaciones con cookie JWT requieren protección CSRF. La API aplica autorización por objeto a cada `user_id`/recurso.
+Las tasas generales, de registro, de carga y el bloqueo progresivo documentados en `docs/limites.md` fueron aprobados solo para demo; aún requieren pruebas y no se consideran producción. Los límites adicionales por endpoint de esta tabla son candidatos pendientes de aprobación. Mutaciones con cookie JWT requieren protección CSRF. La API debe aplicar autorización por objeto a cada `user_id`/recurso.
 
 | Método | Ruta | Auth / control | Límite inicial | Errores principales |
 |---|---|---|---|---|
+| GET | `/health/live` | Pública; solo indica que el proceso API responde, sin detalles de dependencias/secretos | Sonda local del runtime | 200 |
 | POST | `/v1/auth/register` | Pública; validar entrada | 5/h/IP | 400, 409, 422, 429, 503 |
 | POST | `/v1/auth/login` | Pública; requiere token CSRF preauth de same-origin y valida `Origin`; inicia contraseña | 5 fallos por cuenta+IP antes de bloqueo progresivo | 400, 401, 403, 429 |
 | POST | `/v1/auth/login/mfa` | Etapa de login con desafío preauth firmado y CSRF; no acepta JWT aún | 5 intentos/cuenta+IP | 401, 403, 429 |
@@ -27,7 +28,7 @@ Todas las tasas numéricas son propuestas de `docs/limites.md` y requieren aprob
 | POST | `/v1/reports/{report_id}/download-token` | JWT + CSRF + dueño; emite token de un uso | 10/h/cuenta | 401, 404, 409, 429 |
 | GET | `/v1/downloads/{token}` | JWT + dueño del recurso + token válido de un uso; vence en 10 min | 60/min/IP | 401, 403/404, 410, 429 |
 
-Son 18 rutas candidatas. Registro, login y status son públicas con tasa limitada; login/status entregan o exigen un nonce CSRF preauth y validación de origen para impedir que otro sitio cree una sesión en el navegador de la víctima. La etapa MFA solo acepta desafío preautenticado, CSRF y tasa limitada. La expiración exacta del JWT corto, formato del desafío MFA, contrato final de CSRF y paginación siguen pendientes. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
+Son 18 rutas funcionales candidatas, más la sonda operacional `/health/live`. Registro, login y status son públicas con tasa limitada; login/status entregan o exigen un nonce CSRF preauth y validación de origen para impedir que otro sitio cree una sesión en el navegador de la víctima. La sonda solo informa `ok` y no consulta DB ni secretos. La etapa MFA solo acepta desafío preautenticado, CSRF y tasa limitada. La expiración exacta del JWT corto, formato del desafío MFA, contrato final de CSRF y paginación siguen pendientes. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
 
 ## Dependencias externas de contraseña y fallas
 

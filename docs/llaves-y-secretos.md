@@ -12,7 +12,7 @@
 | Credencial HIBP/VT/SMTP | Solo conector API que la necesita | Docker Secret si el conector se habilita | No imprimir en logs; VT no recibe archivo, solo hash bajo consentimiento. |
 | Secreto TOTP cifrado | API | DB como ciphertext; llave fuera de DB | Descifrar solo para validar TOTP. |
 
-API almacena ciphertext, nonce, tag e identificador de versión; el campo de clave nunca se guarda junto con el ciphertext. La memoria/IPC que entregue una llave temporal al worker debe evitar argumentos de proceso, logs y disco; canal exacto **PENDIENTE**. Operador, responsable de aprobación y proveedor para producción **PENDIENTES**.
+Cuando se implemente, la API almacenará ciphertext, nonce, tag e identificador de versión; el campo de clave nunca se guardará junto con el ciphertext. La memoria/IPC que entregue una llave temporal al worker debe evitar argumentos de proceso, logs y disco; canal exacto **PENDIENTE**. Operador, responsable de aprobación y proveedor para producción **PENDIENTES**.
 
 En demo, los secretos se montan como archivos de solo lectura en `/run/secrets` y solo al servicio que los necesita. La aplicación debe fallar cerrada si falta una llave requerida; no usar valores de respaldo de desarrollo en despliegue. Las rutas concretas y los nombres de los archivos se documentarán con la configuración que los consuma.
 

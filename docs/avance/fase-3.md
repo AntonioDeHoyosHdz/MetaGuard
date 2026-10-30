@@ -13,12 +13,34 @@ Fecha de inicio: 30 de octubre de 2026. Esta es la Fase 3 del seguimiento ODD; l
 
 | Unidad | Alcance | Evidencia de cierre |
 |---|---|---|
-| 1. Base del backend | FastAPI, configuración fail-closed, conexión PostgreSQL, modelos y Alembic, pruebas y OpenAPI coherente | Comando de prueba reproducible, migración validada y contrato documentado; no contiene secretos |
+| 1a. Runtime base | FastAPI, configuración fail-closed, lector de secretos, liveness y pruebas | Implementado como primera unidad de código en `feat/phase3-backend`; evidencia abajo. No conecta DB ni monta secretos todavía. |
+| 1b. Persistencia | PostgreSQL, SQLAlchemy/Alembic y modelos | Pendiente de definir esquema mínimo de cuenta, reportes y eventos sin ampliar datos personales. |
 | 2. Auth y acceso | Registro/login, cookies seguras, CSRF/Origin, Argon2id, TOTP, autorización por objeto y límites | Pruebas de autenticación/CSRF/BOLA/tasa; revisión independiente de seguridad antes de cerrar |
 | 3. Ciclo de archivo | Carga acotada sin parsear en API, hash, descarga de un uso, retención/purga | Pruebas de límite, propiedad, replay/expiración/borrado y restos/logs |
 | 4. Proxy y ejecución | Nginx con origen de IP confiable; servicios demo, límites de recursos y secreto montado | Validación de configuración y prueba contra `X-Forwarded-For` falsificado |
 
 La limpieza/neutralización, la integración con el worker y su transferencia de datos/llaves pertenecen a la fase siguiente o requieren una decisión de IPC antes de escribir ese camino. El backend no debe afirmar que un archivo subido quedó limpio.
+
+## Progreso y evidencia
+
+### Subunidad 1a — runtime, configuración y liveness
+
+- Creado `backend/` con FastAPI, settings validados y valores de límites aprobados para demo. Los límites aún son solo configuración: todavía no hay endpoint de carga ni middleware de tasa que los aplique.
+- Creado `SecretStore`: lee exclusivamente nombres allowlisted desde Docker Secret files. Las lecturas binarias preservan cada byte; la normalización de saltos de línea solo ocurre en `read_text`. No hay valores de secretos en el repo ni un Compose que los monte.
+- `/health/live` responde solo `{"status":"ok"}`; no abre DB, lee secretos o revela dependencias. En `production` `/docs` y `/openapi.json` están deshabilitados por defecto.
+- `uv` se eligió porque estaba instalado en el entorno (0.11.2) y produce `uv.lock`; Python verificado 3.12.10. `uv sync --all-groups` instaló dependencias para ejecutar pruebas; este uso de red fue solo descarga de paquetes.
+- La unidad incluye 384 líneas de cambios de código, pruebas y documentación; `uv.lock` aporta 578 líneas generadas por la herramienta para fijar la resolución. No se redujo documentación ni cobertura para ajustarse al presupuesto.
+- Verificación final: `uv run pytest` → **15 passed**, cobertura **100%** del código existente (la regla global pide ≥70%); `uv run ruff check .` → **All checks passed!**; `uv run ruff format --check .` → **7 files already formatted**; `uv lock --check` → **Resolved 30 packages**; `git diff --check` sin errores.
+- Prueba de runtime con `uv run uvicorn metaguard_api.main:app --host 127.0.0.1 --port 8765 --no-access-log`: respuesta de `GET /health/live` `{"status":"ok"}` y `GET /docs` devolvió `404` con la configuración predeterminada.
+- Revisión de seguridad independiente: primer pase encontró validación positiva faltante en lockout, mutación de bytes binarios por normalización de CR/LF y frase de aprobación de tasas obsoleta. Se corrigieron y re-revisaron sin hallazgos bloqueantes. Esto cubre solo el esqueleto/configuración; no autentica ni cifra datos.
+- El entorno actual no expone `/gentle:changes` ni una acción de revisión nativa; no se activó nada. Para esta subunidad se inspeccionó el diff manualmente y se solicitó revisión independiente. Antes de cerrar auth, cifrado o procesamiento, recordar al usuario la revisión nativa y esperar su decisión si sigue sin estar disponible.
+- Ajustes derivados de pruebas: el primer `pytest` no resolvió el import del paquete; `pythonpath=["."]` lo corrigió. Starlette marcó el uso de `httpx` como obsoleto en la versión resuelta; se cambió el cliente de prueba a `httpx2` y la suite final pasó sin esa advertencia.
+
+### Estado de la fase
+
+- Completado: subunidad 1a (scaffold/liveness/config/lector de secretos); historial de commits verificable en `feat/phase3-backend`.
+- Pendiente: DB/migraciones, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose.
+- OBJ-01/02 funcional: **no cumplidos**; 100% de cobertura del scaffold no es 70% de cobertura de toda la API ni verifica criterios U2.
 
 ## Pendientes que no se inventarán
 

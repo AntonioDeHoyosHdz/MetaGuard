@@ -2,7 +2,7 @@
 
 **Propósito:** fijar límites que acoten consumo de recursos y abuso. **Estado:** el usuario aprobó todos los valores como configuración inicial de demo el 30 de octubre de 2026. No son mediciones ni valores aprobados para producción; su efectividad aún debe probarse.
 
-| Recurso | Propuesta inicial | Justificación | Decisión |
+| Recurso | Valor inicial aprobado para demo | Justificación | Decisión |
 |---|---:|---|---|
 | Archivo JPG/PNG/PDF | Máximo 25 MiB por archivo | Acota transferencia y duplicación en memoria; uniforme para simplificar el primer corte. | APROBADO PARA DEMO; probar |
 | Imagen | Máximo 8,000 px por lado y 40 megapíxeles | Un raster RGBA de 40 MP ronda 160 MiB antes del overhead; margen para limitar expansión bajo un cgroup. | APROBADO PARA DEMO; probar |

@@ -67,4 +67,7 @@ El usuario aprobó el plan de Fase 3, todos los límites propuestos para demo y 
 - Fuente de secretos para demo: Docker Secrets; KMS y rotación periódica productiva pendientes: `docs/llaves-y-secretos.md`.
 - Alcance de seguimiento Fase 3 (U2 Hito 1, OBJ-01/02): runtime/API, modelos/migraciones, autenticación y autorización, flujo acotado de carga/descarga y purga; no incluye limpieza/neutralización de archivos.
 - Antes de las partes afectadas deben resolverse/revisarse: JWT/CSRF/TOTP y parámetros de Argon2id; canal API–worker y entrega de llave; recuperación de cuenta. No inventar un bypass de MFA.
+- Subunidad 1a implementada: esqueleto FastAPI, límites en settings, lector Docker Secret files, `/health/live`, README y contrato API actualizado. Evidencia de tests y revisión en `docs/avance/fase-3.md`; DB/auth/carga/Compose siguen pendientes.
+- `uv` (0.11.2 disponible) se usa con `backend/uv.lock` para dependencias reproducibles; versiones de Python verificada: 3.12.10.
+- `/gentle:changes` y revisión nativa no se exponen en este entorno; se hizo inspección manual y revisión independiente. Antes de cerrar auth/cifrado/procesamiento, recordar la revisión nativa y esperar decisión del usuario si no está disponible.
 - Commits cortos en inglés básico con fechas/autores reales; no reescribir ni retrofechar historial.
