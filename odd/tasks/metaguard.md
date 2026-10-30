@@ -1,26 +1,34 @@
 # ODD — MetaGuard
 
 ## Objetivo
-Avanzar el proyecto MetaGuard conforme a la propuesta U2 y al prompt operativo del usuario, conservando evidencia verificable y esperando confirmación antes de iniciar una fase nueva.
+Desarrollar MetaGuard conforme a la propuesta U2 y al prompt operativo, documentando decisiones con evidencia y sin iniciar fases no autorizadas.
 
-## Alcance actual — Fase 0: explorar
-- [x] Localizar y leer la propuesta PDF U2.
-- [x] Extraer texto de la propuesta a `docs/propuesta-u2.txt`.
-- [x] Inventariar repositorio y contrastar OBJ-01 a OBJ-07 y sus medidas de éxito.
-- [x] Registrar módulos, estado de datos y huecos/preguntas en los documentos de fase 0.
-- [x] Verificar versiones/herramientas locales disponibles.
-- [ ] Presentar reporte al usuario y esperar confirmación antes de Fase 1.
+## Alcance actual — Fase 1: documentación base (OBJ-01 y OBJ-02)
+Plan aprobado por el usuario el 30 de octubre de 2026. Sin código ni afirmaciones de implementación.
 
-## Evidencia
-- `docs/propuesta-u2.txt`: texto extraído localmente de 19 páginas con pypdf; 28,580 caracteres.
-- `docs/trazabilidad.md`: tabla de objetivos/criterios, módulos y modelo de datos.
-- `docs/avance/fase-0.md`: hallazgos, preguntas abiertas y límites de la revisión.
-- `docs/propuesta-u2.txt` se generó con `uv run --with pypdf python ...`; el paquete se ejecutó mediante `uv`.
-- Repositorio Git local inicializado en `main`; commit inicial `5fb8e13` (`Add MetaGuard project files`). `.codex/` y el checkout no relacionado `gentle-ai/` se excluyeron del repositorio.
-- Repositorio privado creado en `https://github.com/AntonioDeHoyosHdz/MetaGuard`; `main` se subió y se verificó que `origin/main` coincide con el commit local.
+- [x] Documentar arquitectura, límites de confianza, flujo de carga/retención, entidades y clasificación de riesgo.
+- [x] Crear matriz STRIDE con 14 amenazas, controles y pruebas aún pendientes de ejecución.
+- [ ] Proponer límites numéricos, claramente no aprobados, y documentar ≥12 endpoints.
+- [ ] Documentar llaves/secretos, recuperación y corpus sin inventar datos reales.
+- [ ] Crear aviso de privacidad y plan con riesgos, responsables/fechas pendientes del usuario.
+- [ ] Revisar coherencia/seguridad, crear reporte de fase y cerrar Fase 1.
+
+Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la revisión inicial cuenta 431 líneas antes de añadir el reporte. Estrategia seleccionada por el usuario: `stacked-to-main`.
+
+| Slice | Alcance | Dependencia | Presupuesto planeado |
+|---|---|---|---:|
+| PR 1 — foundation | Arquitectura, flujo, STRIDE, datos, riesgo de metadatos y correcciones del inventario | `main` | ~240 líneas |
+| PR 2 — API/operations | Límites, API, llaves, recuperación, corpus, aviso, plan y reporte Fase 1 | PR 1 | ~300 líneas |
+
+## Evidencia previa
+- `docs/propuesta-u2.txt`: extracción local de la propuesta U2, 19 páginas.
+- `docs/trazabilidad.md`: estado y criterios OBJ-01…OBJ-07.
+- `docs/avance/fase-0.md`: inventario; `odd/tasks/metaguard.md`: estado remoto GitHub.
+- Repositorio privado: `https://github.com/AntonioDeHoyosHdz/MetaGuard`.
+- El usuario eligió `stacked-to-main` el 30-10-2026; PR 1 y PR 2 se mantendrán como unidades separadas, con PR 2 basado en PR 1.
+- Revisión independiente inicial encontró cuatro huecos de contrato (CSRF de login, autorización de descarga, recuperación MFA y fallback HIBP); se corrigieron y el revisor confirmó que no quedan hallazgos bloqueantes documentales.
 
 ## Estado
-- Fase 0: completada para este inventario local; 0% verificado para cada OBJ-01…OBJ-07. No se modificó código.
-- Repositorio remoto privado creado y subida verificada; árbol de trabajo limpio y `main` sigue `origin/main`.
-- Siguiente paso: únicamente tras confirmación expresa del usuario, iniciar Fase 1.
-
+- Fase 0: completada, 0% de objetivos de implementación verificados.
+- Fase 1: plan aprobado; slice 1 documentado y revisado; slice 2/report pendiente.
+- Siguiente paso tras el cierre: mostrar reporte y esperar confirmación antes de Fase 2.
