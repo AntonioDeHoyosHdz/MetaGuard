@@ -1,6 +1,6 @@
 # Fase 3 (seguimiento) — Backend (OBJ-01/02)
 
-Fecha de inicio: 30 de octubre de 2026. Esta es la Fase 3 del seguimiento ODD; la propuesta U2 denomina a OBJ-01/02 como su primer hito base. Rama apilada: `feat/phase3-backend`, sobre la rama de diseño visual; PR todavía no creado.
+Fecha de inicio: 30 de octubre de 2026. Esta es la Fase 3 del seguimiento ODD; la propuesta U2 denomina a OBJ-01/02 como su primer hito base. Rama apilada: `feat/phase3-backend`, sobre la rama de diseño visual; PR 4 abierto sobre PR 3, sin merge.
 
 ## Autorización y decisiones
 
@@ -40,7 +40,7 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 
 - Completado: subunidad 1a (scaffold/liveness/config/lector de secretos), commit `da1bbd1` (`Add backend health scaffold`).
 - Registro de aprobación y decisiones: `ca8160e` (`Approve demo backend limits`).
-- Código y decisiones están subidos a `origin/feat/phase3-backend`; aún no hay PR. El diff de la rama frente a `docs/phase2-visual-design` tiene **1,056 líneas cambiadas** (578 en `backend/uv.lock`; 478 en los demás archivos). El límite de 400 requiere aprobación `size:exception`: el lockfile no se puede separar en una unidad menor sin perder el bloqueo reproducible, y una sola pasada de segmentación no produjo una división coherente bajo el umbral.
+- [PR 4](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/4) abierto sobre `docs/phase2-visual-design`. El usuario aprobó `size:exception` al responder «si, siguele»; boundary verificado al abrir: 1,024 adiciones + 32 eliminaciones = 1,056 líneas (578 generadas en `uv.lock`). `gh pr checks 4` reportó «no checks reported», no CI aprobado. No se hizo merge.
 - Pendiente: DB/migraciones, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose.
 - OBJ-01/02 funcional: **no cumplidos**; 100% de cobertura del scaffold no es 70% de cobertura de toda la API ni verifica criterios U2.
 

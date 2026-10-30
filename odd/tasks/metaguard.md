@@ -72,3 +72,9 @@ El usuario aprobó el plan de Fase 3, todos los límites propuestos para demo y 
 - `/gentle:changes` y revisión nativa no se exponen en este entorno; se hizo inspección manual y revisión independiente. Antes de cerrar auth/cifrado/procesamiento, recordar la revisión nativa y esperar decisión del usuario si no está disponible.
 - Commits publicados en `feat/phase3-backend`: `ca8160e` (aprobación de límites demo/secretos), `da1bbd1` (FastAPI/liveness/config/tests) y `be2add2` (registro). No se creó PR: el diff de la rama vs. Fase 2 tiene 1,056 líneas, incluidas 578 líneas generadas de `uv.lock`; pedir autorización `size:exception` antes de abrirlo según la skill de PR encadenados.
 - Commits cortos en inglés básico con fechas/autores reales; no reescribir ni retrofechar historial.
+
+## Continuación — persistencia base
+
+- Usuario aprobó `size:exception` y continuar. PR 4 abierto sobre PR 3: https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/4; no merge, sin checks CI reportados. Esta actualización supersede la espera de aprobación anterior.
+- Próxima unidad: conexión SQLAlchemy PostgreSQL con password desde Docker Secret, sesiones por operación y entorno Alembic sin entidades de negocio inventadas. Rama hija de PR 4.
+- Docker CLI existe pero el daemon Linux no está disponible (pipe dockerDesktopLinuxEngine ausente); integración PostgreSQL real queda NO VERIFICADA mientras no haya daemon. No iniciar servicios del equipo sin necesidad.
