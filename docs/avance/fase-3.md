@@ -40,7 +40,7 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 
 - Completado: subunidad 1a (scaffold/liveness/config/lector de secretos), commit `da1bbd1` (`Add backend health scaffold`).
 - Registro de aprobación y decisiones: `ca8160e` (`Approve demo backend limits`).
-- Código y decisiones están subidos a `origin/feat/phase3-backend`; aún no hay PR. El diff actual tiene 957 líneas incluyendo 578 generadas en `backend/uv.lock`. El límite de 400 requiere aprobación `size:exception` porque separar el lockfile no produciría una unidad más pequeña/revisable.
+- Código y decisiones están subidos a `origin/feat/phase3-backend`; aún no hay PR. El diff de la rama frente a `docs/phase2-visual-design` tiene **1,056 líneas cambiadas** (578 en `backend/uv.lock`; 478 en los demás archivos). El límite de 400 requiere aprobación `size:exception`: el lockfile no se puede separar en una unidad menor sin perder el bloqueo reproducible, y una sola pasada de segmentación no produjo una división coherente bajo el umbral.
 - Pendiente: DB/migraciones, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose.
 - OBJ-01/02 funcional: **no cumplidos**; 100% de cobertura del scaffold no es 70% de cobertura de toda la API ni verifica criterios U2.
 
