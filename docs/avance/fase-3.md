@@ -53,6 +53,7 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 
 ## Continuación — base de persistencia parcial
 
+- [PR 6](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/6) abierto sobre PR 5, commit principal `35021cf` (`Add database transaction base`), boundary inicial 259 líneas. PR 5/6 sin checks CI reportados; no se hizo merge.
 - PR 4 abierto con excepción de tamaño aprobada. [PR 5](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/5), dependiente de PR 4, añade solo dependencias reproducibles: `4ea2fe8`, 300 líneas (295 generadas). Baseline de 15 tests pasó y se verificaron imports SQLAlchemy 2.1.6, Alembic 1.20.1 y psycopg 3.3.6.
 - La siguiente rama `feat/phase3-database-runtime` añade un helper PostgreSQL sin conexión al importar, password desde Docker Secret, `URL.create`, transacciones commit/rollback/cierre y Alembic con metadata vacía. FastAPI todavía no lo conecta. Ver `docs/backend-persistencia.md` para configuración, límites y rollback.
 - TDD: la prueba inicial falló con `ModuleNotFoundError: metaguard_api.database` antes de implementar. Tras la implementación, la suite completa dio **22 passed**, cobertura **100%** de `metaguard_api` (105 sentencias); no mide todas las rutas futuras ni el código de Alembic fuera del paquete. Ruff pasó; format: **11 files already formatted**; lock: **Resolved 37 packages**.
