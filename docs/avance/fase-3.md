@@ -13,7 +13,7 @@ Fecha de inicio: 30 de octubre de 2026. Esta es la Fase 3 del seguimiento ODD; l
 
 | Unidad | Alcance | Evidencia de cierre |
 |---|---|---|
-| 1a. Runtime base | FastAPI, configuración fail-closed, lector de secretos, liveness y pruebas | Implementado como primera unidad de código en `feat/phase3-backend`; evidencia abajo. No conecta DB ni monta secretos todavía. |
+| 1a. Runtime base | FastAPI, configuración fail-closed, lector de secretos, liveness y pruebas | Implementado en `da1bbd1` sobre `feat/phase3-backend`; evidencia abajo. No conecta DB ni monta secretos todavía. |
 | 1b. Persistencia | PostgreSQL, SQLAlchemy/Alembic y modelos | Pendiente de definir esquema mínimo de cuenta, reportes y eventos sin ampliar datos personales. |
 | 2. Auth y acceso | Registro/login, cookies seguras, CSRF/Origin, Argon2id, TOTP, autorización por objeto y límites | Pruebas de autenticación/CSRF/BOLA/tasa; revisión independiente de seguridad antes de cerrar |
 | 3. Ciclo de archivo | Carga acotada sin parsear en API, hash, descarga de un uso, retención/purga | Pruebas de límite, propiedad, replay/expiración/borrado y restos/logs |
@@ -38,7 +38,9 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 
 ### Estado de la fase
 
-- Completado: subunidad 1a (scaffold/liveness/config/lector de secretos); historial de commits verificable en `feat/phase3-backend`.
+- Completado: subunidad 1a (scaffold/liveness/config/lector de secretos), commit `da1bbd1` (`Add backend health scaffold`).
+- Registro de aprobación y decisiones: `ca8160e` (`Approve demo backend limits`).
+- Código y decisiones están subidos a `origin/feat/phase3-backend`; aún no hay PR. El diff actual tiene 957 líneas incluyendo 578 generadas en `backend/uv.lock`. El límite de 400 requiere aprobación `size:exception` porque separar el lockfile no produciría una unidad más pequeña/revisable.
 - Pendiente: DB/migraciones, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose.
 - OBJ-01/02 funcional: **no cumplidos**; 100% de cobertura del scaffold no es 70% de cobertura de toda la API ni verifica criterios U2.
 
