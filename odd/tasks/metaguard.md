@@ -56,5 +56,5 @@ Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estra
 - Mensajes de commit cortos y comprensibles en inglés básico; publicar los avances por unidades pequeñas.
 - No falsificar fechas, autores ni actividad histórica. Los nuevos commits usarán su fecha real y no se reescribirá el historial existente.
 - Commits Fase 2 ya publicados en secuencia real: `793252c` (plan), `1f2f7b4` (tokens), `c2e607f` (decisiones), `353d8fb` (interfaz), `5eec9d1` (escena 3D), `a2c0bc1` (recursos locales/CSP). El reporte de fase registra la auditoría.
-- Fase 2: 4/4 artefactos documentados y paleta auditada; rendimiento 3D/UI real pendientes; PR 3 abierto, aprobación del diseño pendiente antes de Fase 3.
+- Fase 2: 4/4 artefactos documentados y paleta auditada; usuario aprobó la dirección visual el 30-10-2026; rendimiento 3D/UI real pendientes; plan Fase 3 requiere aprobación.
 - PR 3: [Add MetaGuard visual design](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3), abierto sobre `docs/phase1-02-api-ops`; no se hizo merge.
