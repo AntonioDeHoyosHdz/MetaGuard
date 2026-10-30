@@ -47,7 +47,7 @@ El usuario solicitó preparar una dirección original basada en las capturas de 
 - [x] Revisar accesibilidad, movimiento reducido, rendimiento y reglas de recursos locales.
 - [x] Crear reporte Fase 2; no iniciar código antes de la aprobación del diseño.
 - [x] Publicar avances de diseño en `docs/phase2-visual-design`; ver referencias de commits reales.
-- [ ] Abrir PR 3 apilado sobre PR 2 y verificar referencias remotas; no hacer merge.
+- [x] Abrir PR 3 apilado sobre PR 2 y verificar referencias remotas; no hacer merge.
 
 Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estrategia `stacked-to-main` continúa: la rama/PR de Fase 2 dependerá de PR 2 mientras este siga abierto.
 
@@ -56,4 +56,5 @@ Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estra
 - Mensajes de commit cortos y comprensibles en inglés básico; publicar los avances por unidades pequeñas.
 - No falsificar fechas, autores ni actividad histórica. Los nuevos commits usarán su fecha real y no se reescribirá el historial existente.
 - Commits Fase 2 ya publicados en secuencia real: `793252c` (plan), `1f2f7b4` (tokens), `c2e607f` (decisiones), `353d8fb` (interfaz), `5eec9d1` (escena 3D), `a2c0bc1` (recursos locales/CSP). El reporte de fase registra la auditoría.
-- Fase 2: 4/4 artefactos documentados y paleta auditada; rendimiento 3D/UI real pendientes; rama remota publicada, PR 3 pendiente de abrir.
+- Fase 2: 4/4 artefactos documentados y paleta auditada; rendimiento 3D/UI real pendientes; PR 3 abierto, aprobación del diseño pendiente antes de Fase 3.
+- PR 3: [Add MetaGuard visual design](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3), abierto sobre `docs/phase1-02-api-ops`; no se hizo merge.
