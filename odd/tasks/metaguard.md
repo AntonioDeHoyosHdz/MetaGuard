@@ -35,7 +35,7 @@ Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la
 ## Estado
 - Fase 0: completada, 0% de objetivos de implementación verificados.
 - Fase 1: 12/12 artefactos documentados y revisión de seguridad completada; PR 1 y PR 2 abiertos en cadena.
-- Fase 2 quedó pendiente de diseño y confirmación del usuario.
+- Fase 2: documentación visual terminada y dirección aprobada; PR 3 abierto y sin merge. La implementación visual aún no existe.
 
 ## Alcance actual — Fase 2: diseño visual (OBJ-04)
 
@@ -56,13 +56,15 @@ Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estra
 - Mensajes de commit cortos y comprensibles en inglés básico; publicar los avances por unidades pequeñas.
 - No falsificar fechas, autores ni actividad histórica. Los nuevos commits usarán su fecha real y no se reescribirá el historial existente.
 - Commits Fase 2 ya publicados en secuencia real: `793252c` (plan), `1f2f7b4` (tokens), `c2e607f` (decisiones), `353d8fb` (interfaz), `5eec9d1` (escena 3D), `a2c0bc1` (recursos locales/CSP). El reporte de fase registra la auditoría.
-- Fase 2: 4/4 artefactos documentados y paleta auditada; usuario aprobó la dirección visual el 30-10-2026; rendimiento 3D/UI real pendientes; plan Fase 3 requiere aprobación.
+- Fase 2: 4/4 artefactos documentados y paleta auditada; usuario aprobó la dirección visual el 30-10-2026; rendimiento 3D/UI real pendientes. El usuario aprobó el plan de backend y las decisiones iniciales para demo el 30-10-2026.
 - PR 3: [Add MetaGuard visual design](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3), abierto sobre `docs/phase1-02-api-ops`; no se hizo merge.
 
 ## Siguiente fase — Fase 3: backend (OBJ-01/02)
 
-El usuario aprobó el plan de Fase 3 el 30-10-2026. La implementación aún no inicia: espera decisión expresa sobre límites de demo y ubicación de secretos antes de fijar configuración/código.
+El usuario aprobó el plan de Fase 3, todos los límites propuestos para demo y Docker Secrets montados al runtime el 30-10-2026. La rama `feat/phase3-backend` se apila sobre Fase 2 conforme a `stacked-to-main`.
 
-- Valores candidatos existentes: `docs/limites.md` (25 MiB, imagen ≤8,000 px/40 MP, PDF ≤100 páginas, 60 s, worker 1 vCPU/1 GiB, tasas sugeridas). No están aprobados.
-- Alternativa de demo para llaves: Docker Secrets montados al runtime, fuera de Git; KMS y periodicidad productiva de rotación siguen sin decisión.
-- No retrofechar ni alterar commits/autores; continuar con commits breves y fechas reales.
+- Límites iniciales de demo aprobados; su efectividad no está medida: `docs/limites.md`.
+- Fuente de secretos para demo: Docker Secrets; KMS y rotación periódica productiva pendientes: `docs/llaves-y-secretos.md`.
+- Alcance de seguimiento Fase 3 (U2 Hito 1, OBJ-01/02): runtime/API, modelos/migraciones, autenticación y autorización, flujo acotado de carga/descarga y purga; no incluye limpieza/neutralización de archivos.
+- Antes de las partes afectadas deben resolverse/revisarse: JWT/CSRF/TOTP y parámetros de Argon2id; canal API–worker y entrega de llave; recuperación de cuenta. No inventar un bypass de MFA.
+- Commits cortos en inglés básico con fechas/autores reales; no reescribir ni retrofechar historial.
