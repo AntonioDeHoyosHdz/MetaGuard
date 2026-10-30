@@ -13,7 +13,7 @@ Fecha: 30 de octubre de 2026. Plan aprobado por el usuario; documentación entre
 - `gh pr checks 1` y `gh pr checks 2` devolvieron “no checks reported” (salida 1); no hay resultado de CI que pueda afirmarse como aprobado.
 - Revisión independiente de seguridad: primer pase halló cuatro ambigüedades de contrato (CSRF de login, descarga, recuperación MFA, fallback HIBP); se corrigieron. Segundo pase: no quedan hallazgos documentales bloqueantes. Esto no revisa código ni prueba implementación.
 - PR 1: [`Document trust boundaries and threats`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1), 221 líneas cambiadas, base `main`, commit `86f832b`.
-- PR 2: [`Add API and operations documentation`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2), basado en PR 1, commits `0b2a83a` (docs) y `0db5511` (registro); ambos están abiertos y no se han integrado a `main`.
+- PR 2: [`Add API and operations documentation`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2), basado en PR 1, commit principal `0b2a83a` más seguimientos de registro/evidencia visibles en su historial; ambos están abiertos y no se han integrado a `main`.
 
 ## Parcial / no verificado
 
