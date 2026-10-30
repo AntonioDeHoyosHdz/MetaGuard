@@ -1,0 +1,19 @@
+# Local Codex configuration
+/.codex/
+
+# Separate Gentle source checkout; not part of MetaGuard
+/gentle-ai/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Generated or local dependencies
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
