@@ -8,6 +8,7 @@ Fecha: 30 de octubre de 2026. Plan aprobado por el usuario; documentación entre
 - OBJ-01: diagrama Mermaid con cinco límites de confianza; cinco pasos de carga/retención; matriz con 14 amenazas STRIDE y controles/pruebas previstos.
 - OBJ-02: contrato con 18 rutas; autenticación/CSRF/propiedad, tasas candidatas, respuestas de error y requisitos de OpenAPI anotados.
 - Datos U2 §3.2 preservados. Números de límites, TOTP/JWT/CSRF específicos, llaves, recuperación, fuente del corpus, responsables individuales y calendario que U2 no fija están marcados como pendientes o propuestas no aprobadas.
+- La primera comprobación del corpus falló con `AssertionError: missing PDF case: EmbeddedFiles`; causa: faltaba esa clave de adjuntos en la lista de variantes. Se agregó `/EmbeddedFiles` y anotaciones de archivo; la comprobación final de variantes requeridas pasó.
 - Revisión estructural: 12 documentos tienen propósito e impacto de ausencia; 14 amenazas, 18 rutas y casos PDF activos requeridos se encontraron. `git diff --check` sin errores.
 - Revisión independiente de seguridad: primer pase halló cuatro ambigüedades de contrato (CSRF de login, descarga, recuperación MFA, fallback HIBP); se corrigieron. Segundo pase: no quedan hallazgos documentales bloqueantes. Esto no revisa código ni prueba implementación.
 - PR 1: [`Document trust boundaries and threats`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1), 221 líneas cambiadas, base `main`, commit `86f832b`.
