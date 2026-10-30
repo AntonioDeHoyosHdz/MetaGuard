@@ -27,7 +27,7 @@ Fecha de revisión: 30 de octubre de 2026. Alcance: inventario local del directo
 
 - Presente en la raíz: `U2_PropuestaProyecto_MetaGard_243776.pdf`, `.codex/` y `gentle-ai/`.
 - `gentle-ai/` es un checkout Git separado del código de la herramienta Gentle; no se considera implementación de MetaGuard. La raíz de MetaGuard se inicializó como Git después del corte de Fase 0 y se publicó en el repositorio privado `https://github.com/AntonioDeHoyosHdz/MetaGuard`. Este cambio de gestión no altera el estado funcional de los objetivos.
-- No se encontraron `backend/`, `frontend/`, `processor/`, `nginx/`, `docker-compose.yml`, `corpus/`, `README.md`, `AGENTS.md` en la raíz ni `docs/diseno/metaguard-design-spec.json`. La documentación de diseño Fase 1 está en una rama/PR apilada pendiente, no integrada a `main`.
+- No se encontraron `backend/`, `frontend/`, `processor/`, `nginx/`, `docker-compose.yml`, `corpus/`, `README.md`, `AGENTS.md` en la raíz ni `docs/diseno/metaguard-design-spec.json`. La documentación de diseño Fase 1 está en una cadena de PRs abierta, aún no integrada a `main`.
 - No se identificó contradicción entre artefactos implementados y la propuesta: no hay artefactos de implementación para comparar. La clasificación por campo, el diseño visual y las decisiones de límites aún no están definidos/confirmados.
 
 ## Datos retenidos (sección 3.2 de la propuesta)
@@ -43,4 +43,4 @@ Fecha de revisión: 30 de octubre de 2026. Alcance: inventario local del directo
 
 ## Porcentajes
 
-OBJ-01 a OBJ-07: 0% de éxito funcional verificado; las especificaciones redactadas no demuestran implementación ni pruebas. Los estados “parcial” anteriores indican documentación disponible, no funciones operativas. Los cambios de Fase 1 siguen en revisión apilada y no están en `main`.
+OBJ-01 a OBJ-07: 0% de éxito funcional verificado; las especificaciones redactadas no demuestran implementación ni pruebas. Los estados “parcial” anteriores indican documentación disponible, no funciones operativas. Los cambios de Fase 1 están en PRs abiertos y no están en `main`.

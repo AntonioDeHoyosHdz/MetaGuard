@@ -10,8 +10,8 @@ Fecha: 30 de octubre de 2026. Plan aprobado por el usuario; documentación entre
 - Datos U2 §3.2 preservados. Números de límites, TOTP/JWT/CSRF específicos, llaves, recuperación, fuente del corpus, responsables individuales y calendario que U2 no fija están marcados como pendientes o propuestas no aprobadas.
 - Revisión estructural: 12 documentos tienen propósito e impacto de ausencia; 14 amenazas, 18 rutas y casos PDF activos requeridos se encontraron. `git diff --check` sin errores.
 - Revisión independiente de seguridad: primer pase halló cuatro ambigüedades de contrato (CSRF de login, descarga, recuperación MFA, fallback HIBP); se corrigieron. Segundo pase: no quedan hallazgos documentales bloqueantes. Esto no revisa código ni prueba implementación.
-- PR 1: `Document trust boundaries and threats`, 221 líneas cambiadas, base `main`.
-- PR 2: documentación API/operativa y reporte; basado en PR 1. Números/enlaces se registran al cerrar la cadena.
+- PR 1: [`Document trust boundaries and threats`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1), 221 líneas cambiadas, base `main`, commit `86f832b`.
+- PR 2: [`Add API and operations documentation`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2), basado en PR 1, commit `0b2a83a`; ambos están abiertos y no se han integrado a `main`.
 
 ## Parcial / no verificado
 

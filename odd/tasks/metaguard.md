@@ -12,14 +12,14 @@ Plan aprobado por el usuario el 30 de octubre de 2026. Sin código ni afirmacion
 - [x] Documentar llaves/secretos, recuperación y corpus sin incluir datos reales.
 - [x] Crear aviso de privacidad y plan con riesgos, responsables/fechas pendientes del usuario.
 - [x] Revisar coherencia/seguridad y crear reporte de fase; no declarar objetivos funcionales cumplidos.
-- [ ] Publicar PR 2 apilado sobre PR 1 y verificar las referencias remotas; no hacer merge.
+- [x] Publicar PR 2 apilado sobre PR 1 y verificar las referencias remotas; no hacer merge.
 
 Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la revisión inicial cuenta 431 líneas antes de añadir el reporte. Estrategia seleccionada por el usuario: `stacked-to-main`.
 
 | Slice | Alcance | Dependencia | Presupuesto planeado |
 |---|---|---|---:|
 | PR 1 — foundation | Arquitectura, flujo, STRIDE, datos, riesgo de metadatos y correcciones del inventario | `main` | 221 líneas, commit `86f832b`, [PR 1](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1) |
-| PR 2 — API/operations | Límites, API, llaves, recuperación, corpus, aviso, plan y reporte Fase 1 | PR 1 | Estimado ~300 líneas; rama `docs/phase1-02-api-ops` |
+| PR 2 — API/operations | Límites, API, llaves, recuperación, corpus, aviso, plan y reporte Fase 1 | PR 1 | Rama `docs/phase1-02-api-ops`; commit base `0b2a83a`; [PR 2](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2) |
 
 ## Evidencia previa
 - `docs/propuesta-u2.txt`: extracción local de la propuesta U2, 19 páginas.
@@ -27,10 +27,12 @@ Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la
 - `docs/avance/fase-0.md`: inventario; `odd/tasks/metaguard.md`: estado remoto GitHub.
 - Repositorio privado: `https://github.com/AntonioDeHoyosHdz/MetaGuard`.
 - El usuario eligió `stacked-to-main` el 30-10-2026; PR 1 y PR 2 se mantendrán como unidades separadas, con PR 2 basado en PR 1.
+- PR 1: commit `86f832b`, [Document trust boundaries and threats](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1); estado abierto, base `main`.
+- PR 2: commit `0b2a83a`, [Add API and operations documentation](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2); estado abierto, base `docs/phase1-01-foundation`. No se hizo merge.
 - Revisión independiente inicial encontró cuatro huecos de contrato (CSRF de login, autorización de descarga, recuperación MFA y fallback HIBP); se corrigieron y el revisor confirmó que no quedan hallazgos bloqueantes documentales.
 - `docs/avance/fase-1.md` registra el resultado; propuesta y reporte no cuentan como prueba de implementación.
 
 ## Estado
 - Fase 0: completada, 0% de objetivos de implementación verificados.
-- Fase 1: 12/12 artefactos documentados y revisión de seguridad completada; PR 1 abierto, PR 2 en preparación.
+- Fase 1: 12/12 artefactos documentados y revisión de seguridad completada; PR 1 y PR 2 abiertos en cadena.
 - Siguiente paso tras el cierre: mostrar reporte y esperar confirmación antes de Fase 2.
