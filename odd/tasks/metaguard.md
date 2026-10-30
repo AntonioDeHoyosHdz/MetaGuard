@@ -16,8 +16,10 @@ Avanzar el proyecto MetaGuard conforme a la propuesta U2 y al prompt operativo d
 - `docs/trazabilidad.md`: tabla de objetivos/criterios, módulos y modelo de datos.
 - `docs/avance/fase-0.md`: hallazgos, preguntas abiertas y límites de la revisión.
 - `docs/propuesta-u2.txt` se generó con `uv run --with pypdf python ...`; el paquete se ejecutó mediante `uv`.
+- Repositorio Git local inicializado en `main`; commit inicial `5fb8e13` (`Add MetaGuard project files`). `.codex/` y el checkout no relacionado `gentle-ai/` se excluyeron del repositorio.
 
 ## Estado
 - Fase 0: completada para este inventario local; 0% verificado para cada OBJ-01…OBJ-07. No se modificó código.
+- El repositorio local ya está listo; creación del remoto y subida están en curso.
 - Siguiente paso: únicamente tras confirmación expresa del usuario, iniciar Fase 1.
 
