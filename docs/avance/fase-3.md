@@ -41,7 +41,7 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 - Completado: subunidad 1a (scaffold/liveness/config/lector de secretos), commit `da1bbd1` (`Add backend health scaffold`).
 - Registro de aprobación y decisiones: `ca8160e` (`Approve demo backend limits`).
 - [PR 4](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/4) abierto sobre `docs/phase2-visual-design`. El usuario aprobó `size:exception` al responder «si, siguele»; boundary verificado al abrir: 1,024 adiciones + 32 eliminaciones = 1,056 líneas (578 generadas en `uv.lock`). `gh pr checks 4` reportó «no checks reported», no CI aprobado. No se hizo merge.
-- Pendiente: DB/migraciones, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose.
+- Pendiente: integración PostgreSQL real, esquema/migraciones de negocio, auth/CSRF/TOTP, permisos, límites efectivos, carga/descarga/purga, Nginx y Compose. Hay una base de persistencia parcial descrita abajo.
 - OBJ-01/02 funcional: **no cumplidos**; 100% de cobertura del scaffold no es 70% de cobertura de toda la API ni verifica criterios U2.
 
 ## Pendientes que no se inventarán
@@ -50,6 +50,16 @@ La limpieza/neutralización, la integración con el worker y su transferencia de
 - Esquema final de reportes/eventos y campos cifrados; retención y borrado de respaldos.
 - Canal API–worker y uso efímero de llave en procesamiento; proveedor/rotación productiva.
 - Flujo completo de recuperación (TTL y espera); se pospone para no crear un bypass de MFA.
+
+## Continuación — base de persistencia parcial
+
+- [PR 6](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/6) abierto sobre PR 5, commit principal `35021cf` (`Add database transaction base`), boundary inicial 259 líneas. PR 5/6 sin checks CI reportados; no se hizo merge.
+- PR 4 abierto con excepción de tamaño aprobada. [PR 5](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/5), dependiente de PR 4, añade solo dependencias reproducibles: `4ea2fe8`, 300 líneas (295 generadas). Baseline de 15 tests pasó y se verificaron imports SQLAlchemy 2.1.6, Alembic 1.20.1 y psycopg 3.3.6.
+- La siguiente rama `feat/phase3-database-runtime` añade un helper PostgreSQL sin conexión al importar, password desde Docker Secret, `URL.create`, transacciones commit/rollback/cierre y Alembic con metadata vacía. FastAPI todavía no lo conecta. Ver `docs/backend-persistencia.md` para configuración, límites y rollback.
+- TDD: la prueba inicial falló con `ModuleNotFoundError: metaguard_api.database` antes de implementar. Tras la implementación, la suite completa dio **22 passed**, cobertura **100%** de `metaguard_api` (105 sentencias); no mide todas las rutas futuras ni el código de Alembic fuera del paquete. Ruff pasó; format: **11 files already formatted**; lock: **Resolved 37 packages**.
+- `uv run alembic upgrade head --sql` produjo `BEGIN; COMMIT;` vacío. Las pruebas online del harness usan una conexión SQLite del llamador; no equivalen a ejecutar migraciones PostgreSQL.
+- Se corrigió advertencia Alembic agregando `path_separator=os`; se formatearon imports/código indicados por Ruff. Revisión independiente del helper/Alembic: sin hallazgos bloqueantes; el revisor no ejecutó tests.
+- **NO VERIFICADO:** conexión real a PostgreSQL 16, Docker Secret montado y despliegue. `docker info` falló porque no existe el pipe `dockerDesktopLinuxEngine`. No se inició Docker Desktop ni se cambiaron servicios del equipo. No hay tablas de negocio ni revisión de migración aplicada.
 
 ## Estado inicial
 

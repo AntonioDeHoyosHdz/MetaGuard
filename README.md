@@ -9,6 +9,7 @@ Plataforma web para detectar, explicar y eliminar metadatos de imágenes JPG/PNG
 - Autenticación, base de datos/migraciones, carga/descarga, purga, procesador y frontend: pendientes; no se declara ningún objetivo funcional completado.
 - Los límites aprobados son valores iniciales de demo, no mediciones ni valores de producción.
 - SQLAlchemy, Alembic y psycopg están fijados en el lockfile para la siguiente unidad de persistencia; instalarlos no crea tablas ni activa la conexión en la API.
+- Hay un helper de conexión/transacciones y harness Alembic vacío; ver `docs/backend-persistencia.md`. PostgreSQL real y modelos de negocio siguen sin verificar/implementar.
 
 ## Probar el backend inicial
 
