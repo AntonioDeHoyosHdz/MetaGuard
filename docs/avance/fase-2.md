@@ -29,4 +29,4 @@ Fecha: 30 de octubre de 2026. Alcance: especificación/documentación visual de 
 
 ## Historial y cierre
 
-Se publicaron commits pequeños en la rama `docs/phase2-visual-design`, todos con fecha real del 30-10-2026; no se falsificaron ni reescribieron fechas/autores. [PR 3](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3) está abierto, base `docs/phase1-02-api-ops`, con 255 líneas cambiadas; no se hizo merge. `gh pr checks 3` devolvió “no checks reported” (salida 1), por lo que no se afirma un resultado CI. Esperar aprobación del usuario antes de Fase 3.
+Se publicaron commits pequeños en la rama `docs/phase2-visual-design`, todos con fecha real del 30-10-2026; no se falsificaron ni reescribieron fechas/autores. [PR 3](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3) está abierto sobre `docs/phase1-02-api-ops`, dentro del presupuesto de 400 líneas; no se hizo merge. `gh pr checks 3` devolvió “no checks reported” (salida 1), por lo que no se afirma un resultado CI. Esperar aprobación del usuario antes de Fase 3.
