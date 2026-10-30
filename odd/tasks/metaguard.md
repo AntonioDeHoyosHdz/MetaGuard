@@ -58,3 +58,11 @@ Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estra
 - Commits Fase 2 ya publicados en secuencia real: `793252c` (plan), `1f2f7b4` (tokens), `c2e607f` (decisiones), `353d8fb` (interfaz), `5eec9d1` (escena 3D), `a2c0bc1` (recursos locales/CSP). El reporte de fase registra la auditoría.
 - Fase 2: 4/4 artefactos documentados y paleta auditada; usuario aprobó la dirección visual el 30-10-2026; rendimiento 3D/UI real pendientes; plan Fase 3 requiere aprobación.
 - PR 3: [Add MetaGuard visual design](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3), abierto sobre `docs/phase1-02-api-ops`; no se hizo merge.
+
+## Siguiente fase — Fase 3: backend (OBJ-01/02)
+
+El usuario aprobó el plan de Fase 3 el 30-10-2026. La implementación aún no inicia: espera decisión expresa sobre límites de demo y ubicación de secretos antes de fijar configuración/código.
+
+- Valores candidatos existentes: `docs/limites.md` (25 MiB, imagen ≤8,000 px/40 MP, PDF ≤100 páginas, 60 s, worker 1 vCPU/1 GiB, tasas sugeridas). No están aprobados.
+- Alternativa de demo para llaves: Docker Secrets montados al runtime, fuera de Git; KMS y periodicidad productiva de rotación siguen sin decisión.
+- No retrofechar ni alterar commits/autores; continuar con commits breves y fechas reales.
