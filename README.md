@@ -8,6 +8,7 @@ Plataforma web para detectar, explicar y eliminar metadatos de imágenes JPG/PNG
 - Backend: esqueleto inicial de FastAPI, valores de límites aprobados para demo (todavía no aplicados a operaciones), lector de secretos montados como archivos (aún sin servicio Docker que los monte) y endpoint de liveness.
 - Autenticación, base de datos/migraciones, carga/descarga, purga, procesador y frontend: pendientes; no se declara ningún objetivo funcional completado.
 - Los límites aprobados son valores iniciales de demo, no mediciones ni valores de producción.
+- SQLAlchemy, Alembic y psycopg están fijados en el lockfile para la siguiente unidad de persistencia; instalarlos no crea tablas ni activa la conexión en la API.
 
 ## Probar el backend inicial
 
