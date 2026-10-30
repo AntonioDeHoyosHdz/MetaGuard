@@ -19,6 +19,12 @@
     "mood": ["confiable", "sereno", "preciso", "cinematográfico"],
     "referenceUse": "Tomar como inspiración general la profundidad, luz suave, objetos 3D y transiciones; crear una composición MetaGuard propia."
   },
+  "securityConstraints": {
+    "assetLoading": "Empaquetar three.js, SVG, imágenes, estilos y fuentes localmente; no usar CDN, modelos remotos, teselas externas ni recursos de las capturas.",
+    "network": "Frontend solo se conecta al origen de la API propia; telemetría externa desactivada.",
+    "contentSecurityPolicyProposal": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    "status": "Propuesta de diseño; validar con la implementación y los requisitos reales de Three.js antes de desplegar."
+  },
   "tokens": {
     "color": {
       "canvas": "#071C24",
