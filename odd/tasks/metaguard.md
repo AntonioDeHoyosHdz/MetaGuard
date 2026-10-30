@@ -78,3 +78,4 @@ El usuario aprobó el plan de Fase 3, todos los límites propuestos para demo y 
 - Usuario aprobó `size:exception` y continuar. PR 4 abierto sobre PR 3: https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/4; no merge, sin checks CI reportados. Esta actualización supersede la espera de aprobación anterior.
 - Próxima unidad: conexión SQLAlchemy PostgreSQL con password desde Docker Secret, sesiones por operación y entorno Alembic sin entidades de negocio inventadas. Rama hija de PR 4.
 - Docker CLI existe pero el daemon Linux no está disponible (pipe dockerDesktopLinuxEngine ausente); integración PostgreSQL real queda NO VERIFICADA mientras no haya daemon. No iniciar servicios del equipo sin necesidad.
+- División de persistencia en una pasada: primero dependencias reproducibles (295 líneas generadas + 3 de pyproject y documentación), luego conexión/transacciones/Alembic con pruebas. Mantener cada nuevo PR por debajo de 400, sin extender la excepción de PR 4.
