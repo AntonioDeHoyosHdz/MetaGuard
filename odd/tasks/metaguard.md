@@ -35,4 +35,26 @@ Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la
 ## Estado
 - Fase 0: completada, 0% de objetivos de implementación verificados.
 - Fase 1: 12/12 artefactos documentados y revisión de seguridad completada; PR 1 y PR 2 abiertos en cadena.
-- Siguiente paso tras el cierre: mostrar reporte y esperar confirmación antes de Fase 2.
+- Fase 2 quedó pendiente de diseño y confirmación del usuario.
+
+## Alcance actual — Fase 2: diseño visual (OBJ-04)
+
+El usuario solicitó preparar una dirección original basada en las capturas de referencia: experiencia cinematográfica, objetos 3D y transiciones fluidas, adaptados a privacidad de archivos. Las capturas inspiran cualidades generales; no se copiarán composición, texto, marca, persona ni activos criptográficos.
+
+- [x] Crear `docs/diseno/metaguard-design-spec.json` con tokens, movimiento, escena 3D y contraste.
+- [x] Documentar decisiones visuales, pantallas/estados y concepto/presupuesto 3D.
+- [x] Verificar pares de contraste con herramienta y registrar resultados reales.
+- [x] Revisar accesibilidad, movimiento reducido, rendimiento y reglas de recursos locales.
+- [x] Crear reporte Fase 2; no iniciar código antes de la aprobación del diseño.
+- [x] Publicar avances de diseño en `docs/phase2-visual-design`; ver referencias de commits reales.
+- [x] Abrir PR 3 apilado sobre PR 2 y verificar referencias remotas; no hacer merge.
+
+Forecast: ~300 authored changed lines; mantener una unidad/PR bajo 400. La estrategia `stacked-to-main` continúa: la rama/PR de Fase 2 dependerá de PR 2 mientras este siga abierto.
+
+## Preferencias de entrega registradas
+
+- Mensajes de commit cortos y comprensibles en inglés básico; publicar los avances por unidades pequeñas.
+- No falsificar fechas, autores ni actividad histórica. Los nuevos commits usarán su fecha real y no se reescribirá el historial existente.
+- Commits Fase 2 ya publicados en secuencia real: `793252c` (plan), `1f2f7b4` (tokens), `c2e607f` (decisiones), `353d8fb` (interfaz), `5eec9d1` (escena 3D), `a2c0bc1` (recursos locales/CSP). El reporte de fase registra la auditoría.
+- Fase 2: 4/4 artefactos documentados y paleta auditada; rendimiento 3D/UI real pendientes; PR 3 abierto, aprobación del diseño pendiente antes de Fase 3.
+- PR 3: [Add MetaGuard visual design](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/3), abierto sobre `docs/phase1-02-api-ops`; no se hizo merge.

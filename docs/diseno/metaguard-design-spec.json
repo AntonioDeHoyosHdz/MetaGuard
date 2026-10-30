@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "project": "MetaGuard",
+    "status": "propuesta para revisión",
+    "created": "2026-10-30",
+    "source": "Requisitos U2 y referencias visuales proporcionadas por el usuario; no se reutiliza composición, texto, marca ni activos de esas referencias.",
+    "scope": "Especificación visual, no implementación ni medición de rendimiento."
+  },
+  "principles": [
+    "Privacidad explicable: cada movimiento representa un paso real del flujo, nunca una garantía de seguridad.",
+    "Sensación cinematográfica y profundidad 3D, con lectura y controles por encima del adorno.",
+    "Originalidad: símbolos de privacidad y saneamiento, no monedas, marcas, fotografía ajena ni textos de referencia.",
+    "La interfaz muestra los riesgos con color, etiqueta e icono; el color nunca es la única señal.",
+    "Sin recursos remotos en frontend: fuentes, geometría, iconos y librerías deben empaquetarse localmente."
+  ],
+  "visualDirection": {
+    "name": "El sandbox de vidrio",
+    "description": "Un espacio profundo azul petróleo con una caja de vidrio iluminada; etiquetas abstractas de metadatos orbitan un archivo de muestra y se separan durante la animación de saneamiento.",
+    "mood": ["confiable", "sereno", "preciso", "cinematográfico"],
+    "referenceUse": "Tomar como inspiración general la profundidad, luz suave, objetos 3D y transiciones; crear una composición MetaGuard propia."
+  },
+  "securityConstraints": {
+    "assetLoading": "Empaquetar three.js, SVG, imágenes, estilos y fuentes localmente; no usar CDN, modelos remotos, teselas externas ni recursos de las capturas.",
+    "network": "Frontend solo se conecta al origen de la API propia; telemetría externa desactivada.",
+    "contentSecurityPolicyProposal": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    "status": "Propuesta de diseño; validar con la implementación y los requisitos reales de Three.js antes de desplegar."
+  },
+  "tokens": {
+    "color": {
+      "canvas": "#071C24",
+      "surface": "#0F2B34",
+      "surfaceRaised": "#173943",
+      "textPrimary": "#F3FAF9",
+      "textSecondary": "#B5CBCB",
+      "accent": "#50E3D0",
+      "accentText": "#062B2D",
+      "border": "#628B94",
+      "riskHigh": {"background": "#592A2C", "foreground": "#FFE9E7", "label": "Alto", "icon": "shield-alert"},
+      "riskMedium": {"background": "#594521", "foreground": "#FFF1C7", "label": "Medio", "icon": "triangle-alert"},
+      "riskLow": {"background": "#1D4C3B", "foreground": "#D9FFF0", "label": "Bajo", "icon": "circle-check"}
+    },
+    "typography": {
+      "display": "Georgia, Times New Roman, serif",
+      "body": "system-ui, Segoe UI, sans-serif",
+      "code": "ui-monospace, Consolas, monospace",
+      "selfHostedFonts": false,
+      "note": "Solo fuentes del sistema; no se requiere descargar ni autoalojar fuentes en este borrador."
+    },
+    "spacingPx": [4, 8, 12, 16, 24, 32, 48, 64],
+    "radiusPx": {"control": 12, "card": 20, "heroPanel": 28, "pill": 999},
+    "motion": {
+      "pageTransitionMs": 320,
+      "panelTransitionMs": 220,
+      "microInteractionMs": 160,
+      "scrollRevealMs": 240,
+      "staggerMs": 40,
+      "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "springProposal": {"mass": 1, "stiffness": 190, "damping": 24},
+      "continuousHeroLoopSeconds": 8,
+      "reducedMotion": {
+        "disable": ["parallax", "continuous rotation", "scroll reveal", "particle motion"],
+        "allow": "Opacity-only transition up to 120 ms; preserve all status information without animation."
+      }
+    }
+  },
+  "contrastAudit": {
+    "method": "WCAG relative-luminance contrast formula evaluated by a local Python 3 script on 2026-10-30; ratios rounded to two decimals.",
+    "thresholds": {"normalText": "4.5:1", "largeText": "3:1", "essentialUiBoundary": "3:1"},
+    "pairs": [
+      {"use": "primary text on canvas", "foreground": "#F3FAF9", "background": "#071C24", "ratio": 16.54, "minimum": 4.5, "result": "PASS"},
+      {"use": "primary text on surface", "foreground": "#F3FAF9", "background": "#0F2B34", "ratio": 14.03, "minimum": 4.5, "result": "PASS"},
+      {"use": "primary text on raised surface", "foreground": "#F3FAF9", "background": "#173943", "ratio": 11.66, "minimum": 4.5, "result": "PASS"},
+      {"use": "secondary text on surface", "foreground": "#B5CBCB", "background": "#0F2B34", "ratio": 8.74, "minimum": 4.5, "result": "PASS"},
+      {"use": "secondary text on raised surface", "foreground": "#B5CBCB", "background": "#173943", "ratio": 7.26, "minimum": 4.5, "result": "PASS"},
+      {"use": "accent icon/text on canvas", "foreground": "#50E3D0", "background": "#071C24", "ratio": 11.03, "minimum": 4.5, "result": "PASS"},
+      {"use": "accent icon/text on surface", "foreground": "#50E3D0", "background": "#0F2B34", "ratio": 9.35, "minimum": 4.5, "result": "PASS"},
+      {"use": "button text on accent", "foreground": "#062B2D", "background": "#50E3D0", "ratio": 9.52, "minimum": 4.5, "result": "PASS"},
+      {"use": "high-risk badge text", "foreground": "#FFE9E7", "background": "#592A2C", "ratio": 10.08, "minimum": 4.5, "result": "PASS"},
+      {"use": "medium-risk badge text", "foreground": "#FFF1C7", "background": "#594521", "ratio": 8.12, "minimum": 4.5, "result": "PASS"},
+      {"use": "low-risk badge text", "foreground": "#D9FFF0", "background": "#1D4C3B", "ratio": 9.08, "minimum": 4.5, "result": "PASS"},
+      {"use": "essential border on surface", "foreground": "#628B94", "background": "#0F2B34", "ratio": 3.98, "minimum": 3.0, "result": "PASS"},
+      {"use": "essential border on canvas", "foreground": "#628B94", "background": "#071C24", "ratio": 4.70, "minimum": 3.0, "result": "PASS"},
+      {"use": "essential border on raised surface", "foreground": "#628B94", "background": "#173943", "ratio": 3.31, "minimum": 3.0, "result": "PASS"}
+    ]
+  },
+  "layout": {
+    "breakpointsPx": {"mobileMax": 600, "tabletMax": 1024},
+    "contentMaxWidthPx": 1200,
+    "mobileRule": "Una columna; escena 3D reducida o SVG; controles de carga a ancho completo.",
+    "riskPresentation": ["color", "texto visible", "icono con nombre accesible"]
+  },
+  "scene3d": {
+    "engine": "three.js empaquetado localmente; ningún CDN ni carga remota.",
+    "hero": "Caja de vidrio abstracta que representa el contenedor aislado; un archivo sintético entra, etiquetas abstractas de GPS/autor/dispositivo se apartan y sale una forma limpia.",
+    "baseline": "Primero cubo, núcleo y luz; sin partículas. Medir FPS antes de añadir complejidad.",
+    "performanceProposal": {"desktopTargetFps": 55, "measurementSeconds": 60, "optionalParticleCap": 16, "fallback": "SVG estático si el perfil medido no sostiene el objetivo; no bloquear interacción ni contenido."},
+    "status": "Objetivo propuesto, no medido: todavía no existe frontend."
+  }
+}
