@@ -11,7 +11,7 @@ Fecha: 30 de octubre de 2026. Plan aprobado por el usuario; documentación entre
 - Revisión estructural: 12 documentos tienen propósito e impacto de ausencia; 14 amenazas, 18 rutas y casos PDF activos requeridos se encontraron. `git diff --check` sin errores.
 - Revisión independiente de seguridad: primer pase halló cuatro ambigüedades de contrato (CSRF de login, descarga, recuperación MFA, fallback HIBP); se corrigieron. Segundo pase: no quedan hallazgos documentales bloqueantes. Esto no revisa código ni prueba implementación.
 - PR 1: [`Document trust boundaries and threats`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1), 221 líneas cambiadas, base `main`, commit `86f832b`.
-- PR 2: [`Add API and operations documentation`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2), basado en PR 1, commit `0b2a83a`; ambos están abiertos y no se han integrado a `main`.
+- PR 2: [`Add API and operations documentation`](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2), basado en PR 1, commits `0b2a83a` (docs) y `0db5511` (registro); ambos están abiertos y no se han integrado a `main`.
 
 ## Parcial / no verificado
 

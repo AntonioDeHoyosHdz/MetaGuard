@@ -19,7 +19,7 @@ Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la
 | Slice | Alcance | Dependencia | Presupuesto planeado |
 |---|---|---|---:|
 | PR 1 — foundation | Arquitectura, flujo, STRIDE, datos, riesgo de metadatos y correcciones del inventario | `main` | 221 líneas, commit `86f832b`, [PR 1](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1) |
-| PR 2 — API/operations | Límites, API, llaves, recuperación, corpus, aviso, plan y reporte Fase 1 | PR 1 | Rama `docs/phase1-02-api-ops`; commit base `0b2a83a`; [PR 2](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2) |
+| PR 2 — API/operations | Límites, API, llaves, recuperación, corpus, aviso, plan y reporte Fase 1 | PR 1 | Rama `docs/phase1-02-api-ops`; docs `0b2a83a`, registro `0db5511`; [PR 2](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2) |
 
 ## Evidencia previa
 - `docs/propuesta-u2.txt`: extracción local de la propuesta U2, 19 páginas.
@@ -28,7 +28,7 @@ Forecast: ~500 authored changed lines al incluir el reporte y el seguimiento; la
 - Repositorio privado: `https://github.com/AntonioDeHoyosHdz/MetaGuard`.
 - El usuario eligió `stacked-to-main` el 30-10-2026; PR 1 y PR 2 se mantendrán como unidades separadas, con PR 2 basado en PR 1.
 - PR 1: commit `86f832b`, [Document trust boundaries and threats](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/1); estado abierto, base `main`.
-- PR 2: commit `0b2a83a`, [Add API and operations documentation](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2); estado abierto, base `docs/phase1-01-foundation`. No se hizo merge.
+- PR 2: commits `0b2a83a` (docs) y `0db5511` (registro de cadena), [Add API and operations documentation](https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/2); estado abierto, base `docs/phase1-01-foundation`. No se hizo merge.
 - Revisión independiente inicial encontró cuatro huecos de contrato (CSRF de login, autorización de descarga, recuperación MFA y fallback HIBP); se corrigieron y el revisor confirmó que no quedan hallazgos bloqueantes documentales.
 - `docs/avance/fase-1.md` registra el resultado; propuesta y reporte no cuentan como prueba de implementación.
 
