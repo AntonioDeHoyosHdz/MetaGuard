@@ -81,3 +81,13 @@ El usuario aprobó el plan de Fase 3, todos los límites propuestos para demo y 
 - División de persistencia en una pasada: primero dependencias reproducibles (295 líneas generadas + 3 de pyproject y documentación), luego conexión/transacciones/Alembic con pruebas. Mantener cada nuevo PR por debajo de 400, sin extender la excepción de PR 4.
 - PR 5 abierto: https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/5; commit `4ea2fe8`, 300 líneas. Rama hija actual `feat/phase3-database-runtime` contiene helper de conexión/transacciones y Alembic sin modelos ni revisiones de negocio. 22 tests pasaron, 100% de cobertura del paquete actual; Ruff/format/lock válidos y SQL offline vacío generado. Revisión independiente sin bloqueantes. PostgreSQL real NO VERIFICADO por daemon Docker no disponible; auth/CSRF/TOTP/IPC y esquema siguen pendientes.
 - PR 6 abierto sobre PR 5: https://github.com/AntonioDeHoyosHdz/MetaGuard/pull/6, commit `35021cf`, boundary inicial 259 líneas. PR 5 y 6 sin checks CI reportados, abiertos y sin merge. Siguiente sesión: comprobar PostgreSQL 16 cuando Docker Desktop esté disponible; luego resolver esquema mínimo/TTL JWT-MFA/CSRF/Argon2id antes de auth. No activar revisión nativa sin decisión del usuario. Engram no expuesto; este documento conserva el estado.
+
+## Prioridad aprobada — frontend visual (Fase 5, adelantada)
+
+El usuario aprobó adelantar una interfaz visual sin integrar backend el 30-10-2026. Rama `feat/frontend-visual` apilada sobre `feat/phase3-database-runtime`; los PR anteriores permanecen abiertos, sin merge.
+
+- React 18, TypeScript, Vite, Tailwind y three.js empaquetados localmente; estilo original «El sandbox de vidrio» y transiciones fluidas.
+- Mostrar explícitamente la demo y datos sintéticos. No leer/subir archivos reales ni afirmar limpieza, seguridad o progreso de procesamiento no verificable.
+- Crear interfaz adaptable, navegación accesible por teclado, `prefers-reduced-motion`, cubo 3D mínimo y respaldo SVG; no agregar partículas sin medir primero el rendimiento.
+- Verificar build, pruebas y vista local; registrar resultados reales y límites en el reporte. No publicar recursos externos ni habilitar CDN.
+- Backend y motor siguen pendientes; volver a ellos tras el diseño. Commits cortos en inglés, fechas reales; no reescribir historial.
