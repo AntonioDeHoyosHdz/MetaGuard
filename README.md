@@ -27,3 +27,14 @@ El chequeo `GET /health/live` responde solo `{"status":"ok"}` y no requiere base
 ## Seguridad
 
 No guardes secretos, contraseñas, archivos de usuarios ni datos reales del corpus en Git. Para la demo, el diseño aprobado usa Docker Secrets montados al runtime; crea esos valores fuera del repositorio cuando se incorpore el Compose. KMS y la rotación de producción continúan pendientes.
+
+## Vista visual del frontend
+
+Esta es una **demostración desconectada**: no acepta archivos ni ejecuta análisis o limpieza. Requiere Node.js y npm; desde `frontend/`:
+
+```powershell
+npm ci
+npm run dev
+```
+
+Abre la dirección local que indique Vite. Para comprobar la vista: `npm test` y `npm run build`. El cubo usa three.js empaquetado localmente y tiene respaldo SVG si no inicia WebGL; aún faltan mediciones de rendimiento y auditoría completa de accesibilidad.

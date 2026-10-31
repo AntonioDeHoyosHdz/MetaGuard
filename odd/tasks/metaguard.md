@@ -91,3 +91,4 @@ El usuario aprobó adelantar una interfaz visual sin integrar backend el 30-10-2
 - Crear interfaz adaptable, navegación accesible por teclado, `prefers-reduced-motion`, cubo 3D mínimo y respaldo SVG; no agregar partículas sin medir primero el rendimiento.
 - Verificar build, pruebas y vista local; registrar resultados reales y límites en el reporte. No publicar recursos externos ni habilitar CDN.
 - Backend y motor siguen pendientes; volver a ellos tras el diseño. Commits cortos en inglés, fechas reales; no reescribir historial.
+- Avance visual: React 18/TS/Vite/Tailwind y cubo three.js local; flujo de ejemplo sin archivos reales. Pruebas: 5 pasaron, build pasó con advertencia de chunk escena 542.52 kB, `npm audit` 0 vulnerabilidades. Revisión visual desktop/móvil y demo; FPS de 60 s, CSP/tráfico y auditoría de accesibilidad exhaustiva pendientes. Detalle: `docs/avance/fase-5.md`.
