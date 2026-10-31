@@ -24,6 +24,7 @@ Fecha: 30 de octubre de 2026. El usuario aprobó adelantar una vista visual desc
 - Comprobar exhaustivamente contraste de la interfaz renderizada, teclado, lector de pantalla, movimiento reducido, tráfico y CSP de despliegue. La pérdida posterior de contexto está manejada, pero no tiene prueba automatizada específica.
 - Conectar cuentas/API y hacer carga/análisis/descarga reales solo cuando existan backend y procesador; añadir mapa autoalojado y consentimiento real de VirusTotal después.
 - `package-lock.json` generado contiene más de 3,000 líneas; no abrir un PR apilado que exceda el límite de 400 sin autorización expresa `size:exception`. La excepción de PR 4 no autoriza este nuevo PR.
+- Publicados en `feat/frontend-visual`: `1cabeb0` (plan), `ab5aba1` (dependencias) y `6663a7a` (vista y pruebas). No hay PR de frontend aún: al boundary `6663a7a`, el diff contra `feat/phase3-database-runtime` era 3,687 líneas, de las cuales 3,009 son el lockfile generado. La división en dependencias y vista no deja ambos cambios por debajo de 400; solicitar `size:exception` antes del PR.
 
 ## Cómo probar y revertir
 
