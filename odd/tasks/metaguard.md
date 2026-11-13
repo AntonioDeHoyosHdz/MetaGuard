@@ -93,3 +93,11 @@ El usuario aprobó adelantar una interfaz visual sin integrar backend el 30-10-2
 - Backend y motor siguen pendientes; volver a ellos tras el diseño. Commits cortos en inglés, fechas reales; no reescribir historial.
 - Avance visual: React 18/TS/Vite/Tailwind y cubo three.js local; flujo de ejemplo sin archivos reales. Pruebas: 5 pasaron, build pasó con advertencia de chunk escena 542.52 kB, `npm audit` 0 vulnerabilidades. Revisión visual desktop/móvil y demo; FPS de 60 s, CSP/tráfico y auditoría de accesibilidad exhaustiva pendientes. Detalle: `docs/avance/fase-5.md`.
 - Publicados en `feat/frontend-visual`: `1cabeb0`, `ab5aba1` y `6663a7a`. Sin PR de frontend por ahora: diff del boundary `6663a7a` vs PR 6 = 3,687 líneas (3,009 generadas en lockfile); solicitar `size:exception` para PR apilado. Mantener sin alterar cambios ajenos no relacionados que aparecieron en `docs/` durante el trabajo.
+
+## Continuación — comprobación de contraseñas comprometidas
+
+- [x] Implementar la consulta por prefijo SHA-1 y comparación local de sufijos como componente aislado de OBJ-05, con respuestas simuladas y sin enviar contraseñas; propagar fallos en lugar de considerarlos seguros. Ruta: inline; riesgo: seguridad.
+- [x] Verificar el componente y la suite existente sin hacer builds; verificación independiente de 15 casos sin bloqueantes. Suite actual: 29 pruebas aprobadas; Ruff y formato correctos.
+- Contexto: dependencias fijadas restauradas desde PyPI con autorización; suite existente: 22 pruebas aprobadas. El flujo de registro, el cliente HTTP real, el mecanismo alternativo local y los eventos siguen pendientes; no se considera completo OBJ-05.
+- Solicitud del usuario: «quiero que empieces a generar literalmente todo, todo el front, backend, todo eso»; «Never build after changes.»
+- El contrato de prefijo y padding se basa en la [documentación de Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords). El verificador es una biblioteca aislada, no una integración HTTP ni una política de contraseñas completa.
