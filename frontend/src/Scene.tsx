@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 function Fallback() {
-  return <svg className="scene-fallback" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="glass" x1="60" y1="50" x2="350" y2="340" gradientUnits="userSpaceOnUse"><stop stopColor="#A5FFF0" stopOpacity=".28" /><stop offset="1" stopColor="#40D7C6" stopOpacity=".04" /></linearGradient></defs><ellipse cx="210" cy="344" rx="150" ry="25" stroke="#50E3D0" strokeOpacity=".16" /><path d="M94 124 211 60l116 64v140l-116 67-117-67V124Z" fill="url(#glass)" stroke="#A2F8EA" strokeOpacity=".72" /><path d="m94 124 117 67 116-67M211 191v140" stroke="#A2F8EA" strokeOpacity=".48" /><rect x="169" y="135" width="83" height="109" rx="9" fill="#A4FFF0" fillOpacity=".14" stroke="#C8FFF5" strokeOpacity=".72" /><path d="M185 161h49M185 176h39M185 191h48M185 206h29" stroke="#D8FFF7" strokeOpacity=".6" strokeWidth="3" strokeLinecap="round" /></svg>
+  return <svg className="scene-fallback" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="glass" x1="60" y1="50" x2="350" y2="340" gradientUnits="userSpaceOnUse"><stop stopColor="#A5FFF0" stopOpacity=".28" /><stop offset="1" stopColor="#40D7C6" stopOpacity=".04" /></linearGradient></defs><ellipse cx="210" cy="344" rx="150" ry="25" stroke="#50E3D0" strokeOpacity=".16" /><path d="M94 124 211 60l116 64v140l-116 67-117-67V124Z" fill="url(#glass)" stroke="#145F62" strokeOpacity=".72" /><path d="m94 124 117 67 116-67M211 191v140" stroke="#145F62" strokeOpacity=".48" /><rect x="169" y="135" width="83" height="109" rx="9" fill="#A4FFF0" fillOpacity=".14" stroke="#174C51" strokeOpacity=".72" /><path d="M185 161h49M185 176h39M185 191h48M185 206h29" stroke="#184E53" strokeOpacity=".6" strokeWidth="3" strokeLinecap="round" /></svg>
 }
 
 export default function Scene() {
@@ -37,10 +37,17 @@ export default function Scene() {
 
     const group = new THREE.Group()
     scene.add(group)
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.05, 0.018, 8, 100),
+      new THREE.MeshBasicMaterial({ color: 0x1b6f79, transparent: true, opacity: 0.52 }),
+    )
+    ring.rotation.x = Math.PI / 2.7
+    ring.rotation.y = -0.35
+    group.add(ring)
     const boxGeometry = new THREE.BoxGeometry(2.45, 2.45, 2.45)
     const glass = new THREE.MeshPhysicalMaterial({ color: 0x57e7d7, metalness: 0.08, roughness: 0.16, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false })
     group.add(new THREE.Mesh(boxGeometry, glass))
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry), new THREE.LineBasicMaterial({ color: 0x9effed, transparent: true, opacity: 0.7 }))
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry), new THREE.LineBasicMaterial({ color: 0x167d83, transparent: true, opacity: 0.85 }))
     group.add(edges)
     const inner = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.7, 1.7), new THREE.MeshBasicMaterial({ color: 0x82ffee, transparent: true, opacity: 0.035, side: THREE.BackSide, depthWrite: false }))
     group.add(inner)

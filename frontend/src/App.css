@@ -204,3 +204,57 @@ h1 em, h2 em { font-weight: 400; color: #9eeadf; }
   :root { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* An original, atmospheric opening inspired by cinematic 3D portfolios. */
+.site-header { position: absolute; z-index: 10; left: 50%; width: 100%; transform: translateX(-50%); color: #15353c; }
+.site-header .brand-dot { color: #187b78; }
+.site-header .brand-mark { border-color: #276d70; color: #145f62; }
+.site-header .main-nav { color: #254b52; }
+.site-header .main-nav a:hover { color: #082b30; }
+.site-header .nav-cta { border-color: #46797c; }
+.site-header .nav-cta:hover { background: #ffffff70; }
+.site-header .menu-toggle { border-color: #46797c; color: #15353c; }
+.site-header :is(a, button):focus-visible, .hero :is(a, button):focus-visible { outline-color: #123f43; }
+
+.hero { max-width: none; min-height: min(900px, 100svh); padding: 110px 6% 75px; color: #12353c; overflow: hidden; background: linear-gradient(152deg, #a9d2d7 0%, #d8e9e2 44%, #e9e5d9 76%, #b5d0ca 100%); }
+.hero-grid { inset: 0; z-index: -2; opacity: .45; background-image: radial-gradient(ellipse at 15% 25%, #ffffffaa, transparent 32%), radial-gradient(ellipse at 78% 31%, #f8fff4a0, transparent 35%), radial-gradient(ellipse at 60% 90%, #5cabb45c, transparent 40%); background-size: 100% 100%; background-repeat: no-repeat; mask-image: none; }
+.hero-atmosphere { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.hero-atmosphere span { position: absolute; width: 45vw; height: 15vw; border-radius: 50%; background: #ffffff5c; filter: blur(45px); transform: rotate(-12deg); }
+.hero-atmosphere span:nth-child(1) { top: 12%; left: -15%; }
+.hero-atmosphere span:nth-child(2) { top: 36%; right: -10%; background: #f6f5eaa6; }
+.hero-atmosphere span:nth-child(3) { bottom: 0; left: 20%; background: #8cbfc783; }
+.hero-copy { max-width: 700px; padding-bottom: 0; }
+.hero .eyebrow { color: #215b60; }
+.hero .status-dot { background: #177b75; box-shadow: 0 0 14px #5b9d91; }
+.hero .eyebrow-line { background: #507e80; }
+.hero h1 { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: clamp(54px, 5.5vw, 88px); font-weight: 500; letter-spacing: -.075em; line-height: .99; }
+.hero h1 em { color: #286d6b; font-style: normal; }
+.hero-description { color: #294d53; font-size: 16px; }
+.hero .button-primary { background: #123f43; color: #fff; border-radius: 100px; }
+.hero .button-primary span { background: #d1f0e6; color: #123f43; border-radius: 50%; }
+.hero .button-text { color: #214c50; }
+.hero .play-symbol { border-color: #548183; }
+.hero-note, .hero-note svg, .hero-scroll, .hero-index { color: #315b5e; }
+.hero-visual { height: min(640px, 65vh); }
+.visual-glow { inset: 10%; background: radial-gradient(ellipse, #ffffffa0, #96d7cc60 42%, transparent 70%); filter: blur(30px); }
+.scene-halo { position: absolute; inset: 17% 9%; border: 1px solid #ffffff90; border-radius: 50%; transform: rotate(-20deg); box-shadow: inset 0 0 55px #ffffff48, 0 0 65px #ffffff52; }
+.visual-caption, .visual-bottom { color: #315b5e; }
+.visual-bottom span:last-child { color: #276e6a; }
+.orbit-label { border-color: #ffffffa0; background: #f2fbf3bf; color: #173f41; box-shadow: 0 20px 55px #35686724; backdrop-filter: blur(12px); }
+.orbit-label small, .orbit-label > svg { color: #416d6b; }
+.orbit-icon { background: #cae9df; color: #256c68; }
+
+@media (max-width: 850px) {
+  .hero { min-height: 690px; }
+  .hero h1 { font-size: clamp(54px, 8vw, 76px); }
+  .hero-visual { height: 460px; }
+}
+@media (max-width: 650px) {
+  .site-header { position: absolute; height: 70px; }
+  .site-header .main-nav { background: #ecf7ef; border-color: #7ba5a0; color: #173f41; box-shadow: 0 16px 40px #163c3f35; }
+  .hero { min-height: 100svh; padding-top: 115px; padding-bottom: 70px; }
+  .hero h1 { font-size: clamp(52px, 12vw, 76px); }
+  .hero-description { font-size: 14px; }
+  .hero-visual { height: 360px; margin-top: 20px; }
+  .hero-atmosphere span { width: 80vw; height: 36vw; }
+}

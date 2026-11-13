@@ -91,6 +91,7 @@ function App() {
       <main>
         <section className="hero" id="inicio" aria-labelledby="hero-title">
           <div className="hero-grid" aria-hidden="true" />
+          <div className="hero-atmosphere" aria-hidden="true"><span /><span /><span /></div>
           <div className="hero-copy">
             <div className="eyebrow"><span className="status-dot" /> TU PRIVACIDAD, MÁS CLARA <span className="eyebrow-line" /></div>
             <h1 id="hero-title">Lo que compartes<br /><em>también cuenta.</em></h1>
@@ -104,6 +105,7 @@ function App() {
           <div className="hero-visual">
             <div className="visual-glow" />
             <div className="visual-caption"><span>UN ESPACIO PARA TU PRIVACIDAD</span><span>FIG. 01 — METAGUARD</span></div>
+            <div className="scene-halo" aria-hidden="true" />
             <Suspense fallback={<div className="scene" aria-hidden="true" />}><Scene /></Suspense>
             <div className="orbit-label orbit-label-top"><span className="orbit-icon"><MapPin size={15} /></span><span><small>METADATO</small> Ubicación</span><ArrowUpRight size={13} /></div>
             <div className="orbit-label orbit-label-bottom"><span className="orbit-icon"><Fingerprint size={15} /></span><span><small>METADATO</small> Identidad</span><ArrowUpRight size={13} /></div>
