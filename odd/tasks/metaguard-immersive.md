@@ -10,7 +10,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: `npm tes
 ## Tasks
 
 - T1 (S1): Inspect the visual reference and existing frontend; route: read-only explorer + inline; status: complete.
-- T2 (S1–S2): Implement the cinematic hero and cohesive responsive styling; route: inline; status: complete; commit: pending.
+- T2 (S1–S2): Implement the cinematic hero and cohesive responsive styling; route: inline; status: complete; commit: `20bc7ce`.
 - T3 (S1–S2): Run available tests and visual checks without a build; document limitations; route: inline; status: complete.
 
 ## Log
@@ -21,3 +21,4 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: `npm tes
 - The first implementation adds an atmospheric full-height hero and an original orbital detail to the existing 3D scene; it is not yet visually verified. `git diff --check` passed. Offline `npm ci --offline --ignore-scripts --no-audit --no-fund` failed on an uncached package; Vitest and Vite are unavailable, so tests and a local preview remain pending. No build was run.
 - Independent static review identified repeating background gradients, low-contrast keyboard focus, and a low-contrast WebGL fallback. The three source-level findings were corrected and independently rechecked; browser and automated tests remain pending.
 - With user authorization, restored locked npm dependencies using `npm ci --ignore-scripts --no-audit --no-fund`. `npm test`: 5 tests passed; `tsc --noEmit` and `git diff --check` passed. Inspected the local development view at 1258×622 and 390×844; the mobile menu opened and closed with Escape. The first desktop inspection exposed a headline wrapping problem; adjusted its size and rechecked. No build was run. Screen-reader, exhaustive contrast and device testing remain pending.
+- Commit `20bc7ce` was pushed to `feat/frontend-visual` after staged Gitleaks reported no leaks. Native assessment: medium risk, `review_due: false`, reason `under_budget`; no native review approval is claimed.
