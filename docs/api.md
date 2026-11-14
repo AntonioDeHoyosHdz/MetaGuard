@@ -1,6 +1,6 @@
 # API REST — contrato inicial propuesto
 
-**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; solo `/health/live` se implementó en el esqueleto de API. Las 18 rutas funcionales no están implementadas. El OpenAPI actual solo incluye liveness y no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
+**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; las sondas `/health/live` y `/health/ready` están implementadas. Las 18 rutas funcionales no están implementadas. El OpenAPI actual no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
 
 ## Rutas
 
@@ -9,6 +9,7 @@ Las tasas generales, de registro, de carga y el bloqueo progresivo documentados 
 | Método | Ruta | Auth / control | Límite inicial | Errores principales |
 |---|---|---|---|---|
 | GET | `/health/live` | Pública; solo indica que el proceso API responde, sin detalles de dependencias/secretos | Sonda local del runtime | 200 |
+| GET | `/health/ready` | Pública; consulta mínima de PostgreSQL, sin detalles de errores y sin caché | Sonda local del runtime | 200, 503 |
 | POST | `/v1/auth/register` | Pública; validar entrada | 5/h/IP | 400, 409, 422, 429, 503 |
 | POST | `/v1/auth/login` | Pública; requiere token CSRF preauth de same-origin y valida `Origin`; inicia contraseña | 5 fallos por cuenta+IP antes de bloqueo progresivo | 400, 401, 403, 429 |
 | POST | `/v1/auth/login/mfa` | Etapa de login con desafío preauth firmado y CSRF; no acepta JWT aún | 5 intentos/cuenta+IP | 401, 403, 429 |
@@ -28,7 +29,9 @@ Las tasas generales, de registro, de carga y el bloqueo progresivo documentados 
 | POST | `/v1/reports/{report_id}/download-token` | JWT + CSRF + dueño; emite token de un uso | 10/h/cuenta | 401, 404, 409, 429 |
 | GET | `/v1/downloads/{token}` | JWT + dueño del recurso + token válido de un uso; vence en 10 min | 60/min/IP | 401, 403/404, 410, 429 |
 
-Son 18 rutas funcionales candidatas, más la sonda operacional `/health/live`. Registro, login y status son públicas con tasa limitada; login/status entregan o exigen un nonce CSRF preauth y validación de origen para impedir que otro sitio cree una sesión en el navegador de la víctima. La sonda solo informa `ok` y no consulta DB ni secretos. La etapa MFA solo acepta desafío preautenticado, CSRF y tasa limitada. La expiración exacta del JWT corto, formato del desafío MFA, contrato final de CSRF y paginación siguen pendientes. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
+Son 18 rutas funcionales candidatas, además de las dos sondas operacionales. Registro, login y status son públicas con tasa limitada; login/status entregan o exigen un nonce CSRF preauth y validación de origen para impedir que otro sitio cree una sesión en el navegador de la víctima. `/health/live` solo informa `ok` y no consulta DB ni secretos. La etapa MFA solo acepta desafío preautenticado, CSRF y tasa limitada. La expiración exacta del JWT corto, formato del desafío MFA, contrato final de CSRF y paginación siguen pendientes. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
+
+`/health/ready` ejecuta `SELECT 1` con tiempo de conexión limitado y devuelve únicamente `ok` o `unavailable`; no confirma que existan migraciones, tablas o datos. La prueba contra PostgreSQL real sigue pendiente.
 
 ## Dependencias externas de contraseña y fallas
 

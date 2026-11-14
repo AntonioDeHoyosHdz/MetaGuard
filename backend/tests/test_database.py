@@ -40,7 +40,11 @@ def test_password_is_read_from_file_without_url_interpolation(
     assert password not in repr(captured["url"])
     assert captured["options"]["hide_parameters"] is True
     assert captured["options"]["echo"] is False
+    assert captured["options"]["connect_args"] == {}
     assert password not in repr(settings)
+    database.close()
+    database = create_database(settings, connect_timeout_seconds=3)
+    assert captured["options"]["connect_args"] == {"connect_timeout": 3}
     database.close()
 
 

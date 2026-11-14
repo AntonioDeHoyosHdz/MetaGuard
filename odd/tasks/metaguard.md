@@ -101,3 +101,9 @@ El usuario aprobó adelantar una interfaz visual sin integrar backend el 30-10-2
 - Contexto: dependencias fijadas restauradas desde PyPI con autorización; suite existente: 22 pruebas aprobadas. El flujo de registro, el cliente HTTP real, el mecanismo alternativo local y los eventos siguen pendientes; no se considera completo OBJ-05.
 - Solicitud del usuario: «quiero que empieces a generar literalmente todo, todo el front, backend, todo eso»; «Never build after changes.»
 - El contrato de prefijo y padding se basa en la [documentación de Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords). El verificador es una biblioteca aislada, no una integración HTTP ni una política de contraseñas completa.
+
+## Continuación — disponibilidad de PostgreSQL
+
+- [x] Conectar una sonda mínima de disponibilidad de base de datos a la API sin cambiar `/health/live`, sin revelar secretos y cerrando la conexión. Ruta: inline; riesgo: contrato compartido y seguridad.
+- [x] Cubrir disponibilidad y fallo mediante pruebas HTTP, ejecutar la suite y una verificación independiente: 34 pruebas pasaron; Ruff y formato correctos. La prueba con PostgreSQL real y el esquema de negocio siguen pendientes; no se hizo build.
+- La sonda nueva devuelve únicamente disponibilidad, usa un timeout de conexión de tres segundos y no demuestra que exista el esquema. Revisión independiente sin bloqueantes, con driver simulado y sesión SQLite real; no equivale a probar PostgreSQL ni el tiempo transcurrido de conexión.

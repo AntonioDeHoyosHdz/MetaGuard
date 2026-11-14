@@ -41,7 +41,9 @@ class Database:
         self.engine.dispose()
 
 
-def create_database(settings: DatabaseSettings) -> Database:
+def create_database(
+    settings: DatabaseSettings, *, connect_timeout_seconds: int | None = None
+) -> Database:
     password = SecretStore(settings.secret_dir).read_text(SecretName.POSTGRES_PASSWORD)
     url = URL.create(
         "postgresql+psycopg",
@@ -51,5 +53,8 @@ def create_database(settings: DatabaseSettings) -> Database:
         port=settings.port,
         database=settings.name,
     )
-    engine = create_engine(url, echo=False, hide_parameters=True, pool_pre_ping=True)
+    connect_args = {"connect_timeout": connect_timeout_seconds} if connect_timeout_seconds else {}
+    engine = create_engine(
+        url, echo=False, hide_parameters=True, pool_pre_ping=True, connect_args=connect_args
+    )
     return Database(engine)
