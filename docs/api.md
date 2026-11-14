@@ -37,6 +37,8 @@ Son 18 rutas funcionales candidatas, además de las dos sondas operacionales. Re
 
 Al registrar/cambiar contraseña, HIBP recibe únicamente prefijo SHA-1 de 5 caracteres con padding; la comparación se hace local. Si HIBP no responde, la propuesta U2 exige fallback local: comprobar longitud mínima y lista local de contraseñas comunes, registrar evento de falla del servicio y comunicar que la protección queda reducida (no equivale a cotejar brechas). El registro/cambio continúa solo si pasa la política local. Prueba pendiente: simular timeout/5xx, comprobar fallback y evento, y verificar que nunca salen contraseña ni hash completo.
 
+El backend incluye un transporte aislado para [Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords): usa HTTPS, solicita padding, no sigue redirecciones y limita el tamaño de respuesta. Rechaza respuestas truncadas o sin una delimitación verificable y no interpreta errores como contraseñas seguras. Sus pruebas simulan la red; todavía no está conectado a registro ni cambio de contraseña. El fallback local y los eventos tampoco están implementados. No se realizó una consulta real al servicio.
+
 VirusTotal es opcional por archivo; si no está disponible o se vence la consulta, informar “no disponible/sin antecedentes conocido no equivale a seguro” y no bloquear limpieza. SMTP puede fallar: registrar falla sin afirmar que se entregó la alerta; política de reintento/cola está pendiente.
 
 ## Errores y reglas comunes

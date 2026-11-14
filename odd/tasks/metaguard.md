@@ -108,3 +108,9 @@ El usuario aprobó adelantar una interfaz visual sin integrar backend el 30-10-2
 - [x] Cubrir disponibilidad y fallo mediante pruebas HTTP, ejecutar la suite y una verificación independiente: 34 pruebas pasaron; Ruff y formato correctos. La prueba con PostgreSQL real y el esquema de negocio siguen pendientes; no se hizo build.
 - La sonda nueva devuelve únicamente disponibilidad, usa un timeout de conexión de tres segundos y no demuestra que exista el esquema. Revisión independiente sin bloqueantes, con driver simulado y sesión SQLite real; no equivale a probar PostgreSQL ni el tiempo transcurrido de conexión.
 - Implementación publicada en `aba69b8`. Evaluación nativa: riesgo alto; revisión nativa pendiente porque no está disponible la selección requerida de archivos sin seguimiento. La revisión independiente y el escaneo de secretos no reemplazan esa revisión.
+
+## Continuación — transporte de contraseñas comprometidas
+
+- [x] Añadir transporte HTTPS de Pwned Passwords al comprobador existente, enviando solo el prefijo y solicitando padding; limitar errores y tamaño de respuesta, sin seguir redirecciones. Ruta: inline; riesgo: seguridad y dependencia externa.
+- [x] Probar con transporte simulado sin llamadas externas: 50 pruebas de backend pasaron; Ruff y revisión independiente aprobados. Sin builds. El fallback local, los eventos, una consulta real autorizada y la integración con registro siguen pendientes.
+- La revisión independiente detectó que una respuesta truncada podía producir un falso resultado seguro y que algunos errores HTTP podían filtrar texto del servidor. Se corrigieron ambos casos y se añadieron pruebas de regresión; se rechazan respuestas sin delimitación verificable.
