@@ -2,6 +2,8 @@
 
 **Propósito:** limitar acceso a llaves de cifrado y credenciales externas. **Estado:** el usuario eligió Docker Secrets montados al runtime como fuente para la demo el 30 de octubre de 2026. KMS, responsables y rotación periódica de producción siguen pendientes. La aprobación no define el canal API–worker ni autoriza compartir secretos con el worker.
 
+El entorno del backend incluye bibliotecas fijadas para Argon2id, AES-GCM, JWT y TOTP, con pruebas básicas de sus primitivas. Esto **no implementa todavía** cuentas, MFA, cifrado de campos, gestión de sesiones ni recuperación; sus parámetros y flujos deben verificarse al integrarlos.
+
 ## Inventario y acceso propuesto
 
 | Secreto | Quién lo necesita | Dónde viviría | Regla |
