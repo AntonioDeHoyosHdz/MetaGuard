@@ -26,7 +26,7 @@ Desde `backend/`:
 uv run alembic upgrade head --sql
 ```
 
-El modo offline genera SQL PostgreSQL sin secretos ni conexión. Actualmente solo produce una transacción vacía: **no hay revisiones ni tablas de negocio**. El template de revisión está preparado, pero no se generará una migración hasta resolver el esquema.
+El modo offline genera SQL PostgreSQL sin secretos ni conexión. La revisión `0001_reputation_cache` define únicamente la caché de reputación; no crea cuentas, reportes ni eventos. El SQL generado no demuestra que la migración funcione en un servidor PostgreSQL real.
 
 El comando online `uv run alembic upgrade head` necesita PostgreSQL accesible y el archivo de secreto montado. Lee configuración al ejecutar, no guarda una URL con password en `alembic.ini` y cierra su engine incluso si falla. No ejecutar contra una DB de producción; no se ha definido TLS, respaldo ni rol de migraciones productivo.
 
@@ -34,6 +34,12 @@ El comando online `uv run alembic upgrade head` necesita PostgreSQL accesible y 
 
 Las pruebas usan SQLite exclusivamente para ciclo de transacciones y harness de Alembic. El test de URL captura la construcción del engine sin conexión y verifica password con caracteres reservados, repr oculto y parámetros no logueados. Esto **no demuestra compatibilidad ni conectividad PostgreSQL**.
 
-Docker responde en el entorno actual, pero la conexión a PostgreSQL real todavía no se ha probado. Tampoco hay esquema de usuarios/reportes/eventos, cifrado de campos, auth, purga ni despliegue.
+Docker responde en el entorno actual, pero la conexión a PostgreSQL real todavía no se ha probado. Tampoco hay esquema de usuarios/reportes/eventos, cifrado de campos, auth ni despliegue.
 
-Rollback de esta unidad: retirar el helper, `alembic.ini`, `migrations/`, sus dos archivos de prueba y referencias documentales. No hay migraciones aplicadas ni datos que revertir.
+## Caché de reputación
+
+La caché guarda únicamente un SHA-256 de 32 bytes, un resultado limitado (`malicious`, `suspicious`, `undetected` o `no_record`) y su vencimiento en segundos UTC. No almacena nombres, archivos, usuarios ni respuestas completas del proveedor. `undetected` no significa que el archivo sea seguro; `no_record` indica ausencia de registro.
+
+El acceso omite entradas desde las 24 horas y existe una operación transaccional para purgarlas. **La purga programada aún no está conectada**: una entrada vencida puede seguir almacenada hasta ejecutar esa operación. La consulta externa, el consentimiento, el cliente y el mapeo real de resultados también están pendientes. El tiempo debe provenir del servidor, no del usuario.
+
+La migración incluye downgrade para entornos de prueba; revertir una tabla poblada elimina su contenido y requiere una decisión explícita. No se ha aplicado a una base real en esta unidad.

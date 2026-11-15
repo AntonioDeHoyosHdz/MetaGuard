@@ -1,6 +1,6 @@
 # Datos tratados y retenidos
 
-**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** requisitos propuestos; esquema y controles no implementados.
+**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** requisitos propuestos; solo existe una implementación parcial de la caché de reputación, sin conexión al proveedor ni purga programada.
 
 ## Inventario de datos
 
@@ -11,7 +11,7 @@
 | Eventos de seguridad, incluida IP | Monitoreo/alertas | 30 días | Cada usuario accede solo a los propios | Campos exactos, acceso operador y purga. |
 | Hash de contraseña | Autenticación | Mientras exista la cuenta | Argon2id; nunca texto claro | Parámetros Argon2id se decidirán en implementación. |
 | Secreto TOTP | MFA | Mientras exista la cuenta | AES-256-GCM | Gestión de llaves y recuperación. |
-| Caché de reputación | Respetar cuota de VirusTotal | 24 h | Solo hash/veredicto; sin contenido ni vínculo a usuario | Hash del original y limpio; política de consulta/consentimiento. |
+| Caché de reputación | Respetar cuota de VirusTotal | 24 h | Solo hash/veredicto; sin contenido ni vínculo a usuario | Implementación interna parcial: entradas vencidas no se devuelven, pero la eliminación requiere programar la purga. Consulta y consentimiento pendientes. |
 | Identificador/correo de cuenta | Autenticación y alertas | No detallado en tabla U2; candidato: mientras exista cuenta | No especificado | Confirmar campos, finalidad, retención y cifrado. No guardar más por conveniencia. |
 
 ## Reglas de minimización

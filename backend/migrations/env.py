@@ -2,10 +2,11 @@
 
 from alembic import context
 
-from metaguard_api.database import Base, DatabaseSettings, create_database
+from metaguard_api.database import DatabaseSettings, create_database
+from metaguard_api.reputation_cache import ReputationEntry
 
 config = context.config
-target_metadata = Base.metadata
+target_metadata = ReputationEntry.metadata
 
 
 def run_with_connection(connection):
