@@ -90,6 +90,7 @@ function App() {
 
       <main>
         <section className="hero" id="inicio" aria-labelledby="hero-title">
+          <div className="hero-inner">
           <div className="hero-grid" aria-hidden="true" />
           <div className="hero-atmosphere" aria-hidden="true"><span /><span /><span /></div>
           <div className="hero-copy">
@@ -113,6 +114,7 @@ function App() {
           </div>
           <a className="hero-scroll" href="#como-funciona"><span>DESPLAZA PARA DESCUBRIR</span><ArrowDown size={14} /></a>
           <span className="hero-index" aria-hidden="true">01 / 03</span>
+          </div>
         </section>
 
         <div className="trust-strip" aria-label="Principios de diseño"><span><Shield size={15} /> PRIVACIDAD POR DISEÑO</span><span className="strip-separator">✳</span><span><ScanLine size={15} /> INFORMACIÓN MÁS CLARA</span><span className="strip-separator">✳</span><span><LockKeyhole size={15} /> TÚ TIENES EL CONTROL</span><span className="strip-end">META / GUARD</span></div>

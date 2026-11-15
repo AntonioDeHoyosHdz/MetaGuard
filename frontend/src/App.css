@@ -258,3 +258,17 @@ h1 em, h2 em { font-weight: 400; color: #9eeadf; }
   .hero-visual { height: 360px; margin-top: 20px; }
   .hero-atmosphere span { width: 80vw; height: 36vw; }
 }
+
+/* A single local sprite sheet advances only as the visitor scrolls. */
+.hero { height: 220svh; min-height: 0; display: block; padding: 0; overflow: visible; }
+.hero-inner { position: sticky; top: 0; isolation: isolate; overflow: hidden; min-height: 100svh; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 110px 6% 75px; }
+.sequence-window { position: absolute; left: 50%; top: 50%; height: min(100%, 550px); max-width: 100%; aspect-ratio: 1; transform: translate(-50%, -50%); overflow: hidden; mask-image: radial-gradient(ellipse, #000 50%, transparent 75%); }
+.sequence-sprite { position: absolute; top: 0; left: 0; display: block; width: 500%; max-width: none; height: 400%; }
+@media (max-width: 650px) {
+  .hero { height: auto; min-height: 100svh; }
+  .hero-inner { position: relative; grid-template-columns: 1fr; min-height: 100svh; padding: 115px 6% 70px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero { height: auto; }
+  .hero-inner { position: relative; }
+}

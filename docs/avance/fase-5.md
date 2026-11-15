@@ -2,6 +2,12 @@
 
 Fecha: 30 de octubre de 2026. El usuario aprobó adelantar una vista visual desconectada sin terminar el backend. No se declara completa la Fase 5 de U2 ni OBJ-04.
 
+## Actualización — secuencia de imágenes
+
+Por solicitud posterior del usuario, la portada reemplaza el cubo de Three.js descrito más abajo por una imagen original generada de 20 fotogramas: una caja de vidrio y un documento. Una única lámina local cambia de fotograma al desplazar la página; con movimiento reducido permanece fija y, si falla la imagen, se muestra un SVG local. Se quitaron las dependencias `three` y `@types/three`.
+
+Se verificaron 8 pruebas, TypeScript sin emisión y vistas locales de escritorio y móvil, incluido el cambio por scroll y el modo de movimiento reducido. No se hizo build. La lámina PNG ocupa aproximadamente 1,9 MB; faltan mediciones en dispositivos reales, optimización de transferencia y auditoría de accesibilidad completa. La carga y la limpieza reales siguen sin estar conectadas. El resto de este documento conserva la evidencia histórica de la versión anterior.
+
 ## Hecho
 
 - Frontend React 18 + TypeScript + Vite + Tailwind, en `frontend/`. Dirección original «El sandbox de vidrio», sin copiar marcas, personas ni activos de las referencias.
