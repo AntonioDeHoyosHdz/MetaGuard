@@ -11,7 +11,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: `npm tes
 ## Tasks
 
 - T1 (S1, S3): Generate an original coherent 20-frame privacy-themed image sequence; route: image tool; status: complete.
-- T2 (S1–S3): Replace the procedural 3D cube with scroll-driven frames; route: inline; status: complete; commit: pending.
+- T2 (S1–S3): Replace the procedural 3D cube with scroll-driven frames; route: inline; status: complete; commit: `abaa18f`.
 - T3 (S1–S3): Verify scroll behavior, reduced motion, desktop/mobile and existing tests without build; route: inline + independent verifier; status: complete.
 
 ## Log
@@ -21,3 +21,4 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: `npm tes
 - Replaced Three.js with one local 20-frame PNG sheet (1,909,790 bytes); scrolling selects frames and reduced motion uses the first still. A local SVG appears if the sheet fails to load. The existing demo remains synthetic.
 - RED: new frame tests failed against the old 3D scene. GREEN: 8 frontend tests and `tsc --noEmit` passed. An independent scratch verifier checked scrolling, mobile mapping, live reduced-motion changes, fallback, cleanup and dependency/lock consistency; no blockers. `npm ls --package-lock-only --all --json` showed six optional Tailwind WASM diagnostics on both baseline and candidate.
 - Local development preview inspected at 1258×622 and 390×844; desktop scroll changed the selected sprite frame, mobile mapping was corrected to advance while the illustration is visible, and reduced-motion emulation remained on frame zero. No build was run. Full accessibility, real-device performance and image-transfer optimization remain pending.
+- Commit `abaa18f` was pushed after a staged secret scan reported no leaks. Native assessment was high because the dependency lockfile changed; native review could not start because its untracked-file selection capture was unavailable. Independent verification is not a native approval.
