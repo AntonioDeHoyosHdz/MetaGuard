@@ -1,3 +1,4 @@
+import signal
 import subprocess
 import sys
 
@@ -5,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from metaguard_api.database import Base, Database
-from metaguard_api.maintenance import main
+from metaguard_api.maintenance import _StopFlag, _wait_for_interval, main
 from metaguard_api.reputation_cache import CacheVerdict, get_verdict, save_verdict
 
 
@@ -73,3 +74,86 @@ def test_purge_failure_rolls_back_and_hides_details(tmp_path, monkeypatch, capsy
     with check_db.transaction() as session:
         assert get_verdict(session, "a" * 64, now=100) == CacheVerdict.NO_RECORD
     check_db.close()
+
+
+def test_scheduler_retries_failed_runs_and_stops(monkeypatch) -> None:
+    runs = iter([1, 0])
+    calls = []
+    waits = []
+
+    def purge_once():
+        result = next(runs)
+        calls.append(result)
+        return result
+
+    def wait(stop, seconds):
+        waits.append(seconds)
+        if len(waits) == 2:
+            stop.requested = True
+
+    monkeypatch.setattr("metaguard_api.maintenance._wait_for_interval", wait)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_once", purge_once)
+    assert main(["schedule-reputation", "--interval-seconds", "60"]) == 0
+    assert calls == [1, 0]
+    assert waits == [60, 60]
+
+
+@pytest.mark.parametrize("interval", ["0", "3601", "invalid"])
+def test_scheduler_rejects_invalid_interval_without_connecting(monkeypatch, interval) -> None:
+    def fail(*_args, **_kwargs):
+        raise AssertionError("Database must not be opened")
+
+    monkeypatch.setattr("metaguard_api.maintenance.create_database", fail)
+    with pytest.raises(SystemExit) as result:
+        main(["schedule-reputation", "--interval-seconds", interval])
+    assert result.value.code == 2
+
+
+def test_scheduler_stops_on_sigterm_and_restores_handler(monkeypatch) -> None:
+    previous = signal.getsignal(signal.SIGTERM)
+    stops = []
+
+    def wait(stop, _seconds):
+        signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        stops.append(stop.requested)
+
+    monkeypatch.setattr("metaguard_api.maintenance._wait_for_interval", wait)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_once", lambda: 0)
+    assert main(["schedule-reputation"]) == 0
+    assert stops == [True]
+    assert signal.getsignal(signal.SIGTERM) == previous
+
+
+def test_wait_uses_monotonic_time_and_one_second_sleeps(monkeypatch) -> None:
+    ticks = iter([100.0, 100.0, 101.0, 102.0])
+    sleeps = []
+    monkeypatch.setattr("metaguard_api.maintenance.time.monotonic", lambda: next(ticks))
+    monkeypatch.setattr("metaguard_api.maintenance.time.sleep", sleeps.append)
+    _wait_for_interval(_StopFlag(), 2)
+    assert sleeps == [1, 1]
+
+
+def test_real_sigterm_during_wait_exits_without_deadlock() -> None:
+    code = """
+import inspect, signal, sys
+from metaguard_api import maintenance
+calls = []
+maintenance.purge_once = lambda: calls.append(1) or 0
+previous = signal.getsignal(signal.SIGTERM)
+source, offset = inspect.getsourcelines(maintenance._wait_for_interval)
+sleep_line = offset + next(i for i, line in enumerate(source) if 'time.sleep(' in line)
+def trace(frame, event, arg):
+    if (event == 'line' and frame.f_code is maintenance._wait_for_interval.__code__
+            and frame.f_lineno == sleep_line):
+        sys.settrace(None)
+        signal.raise_signal(signal.SIGTERM)
+    return trace
+sys.settrace(trace)
+assert maintenance.main(['schedule-reputation']) == 0
+assert calls == [1]
+assert signal.getsignal(signal.SIGTERM) == previous
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=15
+    )
+    assert result.returncode == 0, result.stderr
