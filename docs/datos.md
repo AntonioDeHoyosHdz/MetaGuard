@@ -26,3 +26,5 @@
 Sin inventario no se pueden justificar finalidades, plazos, accesos ni cifrado, y se corre el riesgo de conservar datos personales fuera del alcance anunciado.
 
 La tabla inicial de cuentas es solo persistencia: todavía no existe un flujo de registro ni de recuperación. La normalización completa del correo, incluidos casos internacionales y direcciones con parte local sensible a mayúsculas, necesita definirse antes de habilitar esos flujos; no asumir que convertir a minúsculas funciona para todos los proveedores.
+
+La reversión de la migración 0002_accounts elimina la tabla y sus cuentas: requiere respaldo y autorización antes de ejecutarse con datos reales. La restricción SQL de minúsculas no garantiza normalización Unicode consistente entre bases de datos.
