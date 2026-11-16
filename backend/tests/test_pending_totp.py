@@ -81,3 +81,45 @@ def test_pending_can_be_staged_only_once(session):
         now=90,
         expires_at=120,
     )
+
+
+def test_expired_pending_is_removed_only_at_expiry_and_can_be_replaced(session):
+    from metaguard_api.pending_totp import remove_expired_pending
+
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert stage_totp(
+        session, "account-1", secret, key=bytes(32), key_version=1, now=90, expires_at=120
+    )
+    session.commit()
+    assert not remove_expired_pending(session, "account-1", now=119)
+    assert not remove_expired_pending(session, "other", now=120)
+    assert remove_expired_pending(session, "account-1", now=120)
+    session.rollback()
+    assert session.scalar(select(PendingTotp)) is not None
+    assert remove_expired_pending(session, "account-1", now=120)
+    assert stage_totp(
+        session, "account-1", secret, key=bytes(32), key_version=1, now=120, expires_at=150
+    )
+    assert not remove_expired_pending(session, "account-1", now=120)
+    assert session.scalar(select(PendingTotp.expires_at)) == 150
+
+
+@pytest.mark.parametrize("now", [-1, True, 2**63, "120"])
+def test_invalid_cleanup_time_fails_closed(session, now):
+    from metaguard_api.pending_totp import remove_expired_pending
+
+    assert not remove_expired_pending(session, "account-1", now=now)
+
+
+def test_cleanup_never_removes_other_account_or_invalid_time(session):
+    from metaguard_api.pending_totp import remove_expired_pending
+
+    session.add(Account(id="account-2", email="two@example.test", password_hash="synthetic"))
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert stage_totp(
+        session, "account-2", secret, key=bytes(32), key_version=1, now=1, expires_at=2
+    )
+    for now in [-1, True, 2**63, "2"]:
+        assert not remove_expired_pending(session, "account-2", now=now)
+    assert not remove_expired_pending(session, "account-1", now=2)
+    assert session.scalar(select(PendingTotp.account_id)) == "account-2"

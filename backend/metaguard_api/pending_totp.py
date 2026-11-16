@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     String,
+    delete,
     exists,
     literal,
     select,
@@ -84,3 +85,22 @@ def stage_totp(
         .on_conflict_do_nothing(index_elements=[PendingTotp.account_id])
     )
     return session.execute(statement).rowcount == 1
+
+
+def remove_expired_pending(session: Session, account_id: str, *, now: int) -> bool:
+    """Delete only this account's expired pending setup in the caller transaction."""
+    if (
+        not isinstance(account_id, str)
+        or not account_id
+        or len(account_id) > 128
+        or type(now) is not int
+        or not 0 <= now <= 2**63 - 1
+    ):
+        return False
+    result = session.execute(
+        delete(PendingTotp).where(
+            PendingTotp.account_id == account_id,
+            PendingTotp.expires_at <= now,
+        )
+    )
+    return result.rowcount == 1

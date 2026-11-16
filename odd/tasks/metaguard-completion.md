@@ -19,7 +19,8 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2c (S1–S3): Add internal authenticated encryption for TOTP secrets, bound to account identity; route: inline and independent security verification; status: complete; commit: `d09a014`. Risk: item 2.
 - T2d (S1–S3): Persist encrypted TOTP credentials, key version and last accepted time step in a separate account-owned table; no authentication endpoints; route: inline with independent verification; status: complete for schema only; commit: `1c5d325`. Risk: items 1, 2 and 4.
 - T2e (S1–S3): Verify a TOTP code and atomically consume its time step inside the caller transaction; route: inline and independent security verification; status: complete for internal primitive; commit: `ae448c2`. Risk: items 2 and 4.
-- T2f (S1–S3): Prepare an isolated pending TOTP enrollment record with explicit expiry; no routes or activation without confirmation; route: inline with independent security verification; status: complete for staging only; commit: pending. Risk: items 1, 2 and 4.
+- T2f (S1–S3): Prepare an isolated pending TOTP enrollment record with explicit expiry; no routes or activation without confirmation; route: inline with independent security verification; status: complete for staging only; commit: `8607231`. Risk: items 1, 2 and 4.
+- T2g (S1–S3): Remove expired pending TOTP enrollment for a specific account without affecting active or unexpired credentials; route: inline with independent security verification; status: complete for internal operation; commit: pending. Risk: items 1, 2 and 4.
 - T3 (S1–S3): Implement isolated file processing, cleanup and verification; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 1–5.
 - T4 (S1–S3): Connect the frontend to real API workflows with honest error states; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2–3.
 - T5 (S1–S3): Prepare a reproducible, cost-conscious deployment and verify it in an authorized environment; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2, 5.
@@ -62,3 +63,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - User request: «dived etodo por pasaos y mientras vayas avanzando sigue cin el sigueutne ya no mr erpegunte se supone que paraeso esta el odd». Continue authorized units without unnecessary prompts. Pending MFA setup must remain separate from active credentials; expiry is caller-supplied and not a product policy decision. Engram mirror remains unavailable because runtime session identity is unregistered.
 
 - T2f: RED before implementation; 103 backend tests and Ruff passed. Independent staging verifier observed one winner in 16 SQLite races and validated rollback, account-bound ciphertext and offline PostgreSQL SQL. No confirmation, active MFA, cleanup or live PostgreSQL exists. Cross-table enrollment and activation require shared account-level serialization.
+
+- User request: «siguele». T2g removes only expired pending enrollment inside caller-owned transaction; activation remains separate. Engram mirror is pending because runtime session identity is not registered.
+
+- T2g: RED then GREEN; 109 backend tests and Ruff passed. Independent SQLite probes covered 16 double-deletion and 16 replacement races, rollback, account isolation and active credential preservation. PostgreSQL concurrency and scheduled execution remain unverified.
