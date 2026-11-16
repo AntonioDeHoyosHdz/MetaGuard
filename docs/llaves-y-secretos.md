@@ -28,3 +28,9 @@ En demo, los secretos se montan como archivos de solo lectura en `/run/secrets` 
 ## Qué pasa si falta
 
 Sin inventario/rotación, un ciphertext exfiltrado puede volverse legible y una llave filtrada seguir válida sin fecha de revocación ni responsables.
+
+## Protección de contraseñas: componente interno
+
+`account_credentials` genera hashes Argon2id con sal aleatoria de 16 bytes y parámetros fijos (19 MiB, 2 iteraciones, paralelismo 1). Solo verifica el formato y los parámetros emitidos por esta versión; antes de cambiarlos hará falta una estrategia de migración y rehash. El límite de entrada de 1024 bytes UTF-8 protege recursos y no reemplaza una política de contraseñas. Se rechazan hashes malformados antes de llamar a Argon2.
+
+Este componente no implementa cuentas, inicio de sesión, MFA, controles de tasa ni recuperación; no debe exponerse como autenticación completa.
