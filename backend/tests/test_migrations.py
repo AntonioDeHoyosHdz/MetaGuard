@@ -146,3 +146,25 @@ def test_totp_storage_constraints_and_account_deletion() -> None:
             assert connection.execute(text("SELECT count(*) FROM account_totp")).scalar_one() == 0
     finally:
         engine.dispose()
+
+
+def test_system_events_migration_preserves_existing_data() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0004_pending_totp")
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('1','a@b','hash')")
+            )
+            command.upgrade(cfg, "head")
+            assert "system_security_events" in inspect(connection).get_table_names()
+            command.check(cfg)
+            command.downgrade(cfg, "0004_pending_totp")
+            assert "system_security_events" not in inspect(connection).get_table_names()
+            assert connection.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
+    finally:
+        engine.dispose()
