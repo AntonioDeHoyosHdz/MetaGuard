@@ -12,6 +12,8 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "pyjwt==2.15.1",
     "pyotp==2.11.2",
+    "Pillow==13.0.0",
+    "pikepdf==10.18.2",
     "sqlalchemy>=2.1.6",
     "uvicorn>=0.54.0",
 ]
@@ -38,6 +40,9 @@ addopts = [
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv]
+no-build-package = ["pillow", "pikepdf", "lxml"]
 
 [tool.ruff]
 target-version = "py312"
