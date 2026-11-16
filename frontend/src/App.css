@@ -272,3 +272,8 @@ h1 em, h2 em { font-weight: 400; color: #9eeadf; }
   .hero { height: auto; }
   .hero-inner { position: relative; }
 }
+
+.api-health { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #c6eee7; }
+.api-health button { color: inherit; background: transparent; border: 1px solid #628b94; border-radius: 7px; padding: 8px; cursor: pointer; }
+.api-health button:disabled { opacity: .6; cursor: wait; }
+.api-health [role="status"]:not(:empty) { max-width: 220px; }

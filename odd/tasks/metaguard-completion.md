@@ -21,9 +21,10 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2e (S1–S3): Verify a TOTP code and atomically consume its time step inside the caller transaction; route: inline and independent security verification; status: complete for internal primitive; commit: `ae448c2`. Risk: items 2 and 4.
 - T2f (S1–S3): Prepare an isolated pending TOTP enrollment record with explicit expiry; no routes or activation without confirmation; route: inline with independent security verification; status: complete for staging only; commit: `8607231`. Risk: items 1, 2 and 4.
 - T2g (S1–S3): Remove expired pending TOTP enrollment for a specific account without affecting active or unexpired credentials; route: inline with independent security verification; status: complete for internal operation; commit: `116e2cd`. Risk: items 1, 2 and 4.
-- T2h (S1–S3): Confirm pending TOTP with an unexpired code and activate atomically under account-level serialization; route: inline and independent verification; status: complete for internal primitive; commit: pending. Risk: items 1, 2 and 4.
+- T2h (S1–S3): Confirm pending TOTP with an unexpired code and activate atomically under account-level serialization; route: inline and independent verification; status: complete for internal primitive; commit: `4939518`. Risk: items 1, 2 and 4.
 - T3 (S1–S3): Implement isolated file processing, cleanup and verification; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 1–5.
 - T4 (S1–S3): Connect the frontend to real API workflows with honest error states; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2–3.
+- T4a (S1–S3): Connect the visual frontend to the real API liveness endpoint with honest, accessible error states and no file processing claims; route: inline with independent environment verification; status: complete for liveness only; commit: pending. Risk: items 3 and 5.
 - T5 (S1–S3): Prepare a reproducible, cost-conscious deployment and verify it in an authorized environment; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2, 5.
 
 ## Log
@@ -72,3 +73,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - User request: «siguele apruebo todo». Proceed within authorized scope without claiming unspecified external access or fabricating runtime session identity. T2h is an internal service, not public authentication.
 
 - T2h: RED before implementation; verifier exposed partial activation if deletion failed and the caller committed. Added a savepoint, verified abort and ignore failures with regression tests, and reran independent targeted checks including 64 SQLite races. Full suite 113 passed; Ruff passed. Account lock is a no-op update and can alter physical storage even on rejected operations. No live PostgreSQL, login, authorization, rate limiting or endpoint verification.
+
+- User request: «hazklo odavía faltan el registro y acceso públicos, la prueba en PostgreSQL real, el procesamiento de archivos y la integración del frontend. La revisión nativa sigue pendiente: pronóstico parcial, paso 1, tipo `collect`, motivo  pues». T4a connects only liveness, not authentication or file processing. The external review-selection capture operation is not exposed. Engram runtime session remains unregistered.
+
+- T4a: observed failing tests before implementation. A live local Vite-to-FastAPI liveness request returned HTTP 200 and {"status":"ok"}; no database or user file used. Independent reviewer found contrast, mobile layout and broad proxy issues; corrected and rechecked. Preview does not inherit the local API proxy. Authentication, uploads, processing and deployment remain pending.

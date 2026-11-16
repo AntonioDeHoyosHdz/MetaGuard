@@ -45,3 +45,33 @@ describe('MetaGuard visual demonstration', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Abrir menú' }))
   })
 })
+
+it('reports real API liveness without claiming file processing', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) }))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Comprobar API' }))
+  expect(await screen.findByText('API disponible; procesamiento de archivos aún no conectado.')).toBeTruthy()
+  expect(fetch).toHaveBeenCalledWith('/health/live', expect.objectContaining({ credentials: 'omit' }))
+  vi.unstubAllGlobals()
+})
+
+it('reports an unavailable API without pretending analysis worked', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Comprobar API' }))
+  expect(await screen.findByText('No se pudo comprobar la API.')).toBeTruthy()
+  vi.unstubAllGlobals()
+})
+
+it('rejects an unexpected API response and allows retry', async () => {
+  const request = vi.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'unexpected' }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ok' }) })
+  vi.stubGlobal('fetch', request)
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Comprobar API' }))
+  expect(await screen.findByText('No se pudo comprobar la API.')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Comprobar API' }))
+  expect(await screen.findByText('API disponible; procesamiento de archivos aún no conectado.')).toBeTruthy()
+  vi.unstubAllGlobals()
+})

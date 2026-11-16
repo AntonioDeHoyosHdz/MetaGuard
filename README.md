@@ -4,7 +4,7 @@ Plataforma web para detectar, explicar y eliminar metadatos de imágenes JPG/PNG
 
 ## Estado
 
-- La interfaz es una demostración visual desconectada; no envía ni procesa archivos.
+- La interfaz es una demostración visual que puede comprobar la disponibilidad de la API; no envía ni procesa archivos.
 - La API expone comprobaciones de vida y disponibilidad; dispone de componentes internos de caché y contraseñas, pero no de registro ni inicio de sesión.
 - Existen migraciones para la caché y la estructura inicial de cuentas. Se probaron con SQLite y SQL PostgreSQL generado sin conexión, no en PostgreSQL real.
 - El proceso de purga está implementado, pero no está desplegado ni supervisado. Procesamiento aislado, integración con frontend y despliegue siguen pendientes.
@@ -29,7 +29,7 @@ No guardes secretos, contraseñas, archivos de usuarios ni datos reales del corp
 
 ## Vista visual del frontend
 
-Esta es una **demostración desconectada**: no acepta archivos ni ejecuta análisis o limpieza. Requiere Node.js y npm; desde `frontend/`:
+Esta es una **demostración sin procesamiento real**: no acepta archivos ni ejecuta análisis o limpieza. El botón de estado consulta `/health/live`; en desarrollo Vite lo reenvía a la API local del puerto 8000. Esa comprobación no verifica la base de datos ni el procesador. Requiere Node.js y npm; desde `frontend/`:
 
 ```powershell
 npm ci

@@ -38,6 +38,7 @@ const steps = [
 ]
 
 function App() {
+  const [apiStatus, setApiStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle')
   const [risk, setRisk] = useState<Risk>('Alto')
   const [demoStep, setDemoStep] = useState<DemoStep>('carga')
   const [focusDemoStage, setFocusDemoStage] = useState(false)
@@ -51,6 +52,22 @@ function App() {
       setFocusDemoStage(false)
     }
   }, [demoStep, focusDemoStage])
+
+  const checkApi = async () => {
+    setApiStatus('checking')
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 5000)
+    try {
+      const response = await fetch('/health/live', { credentials: 'omit', cache: 'no-store', signal: controller.signal })
+      const body: unknown = response.ok ? await response.json() : null
+      const available = typeof body === 'object' && body !== null && 'status' in body && body.status === 'ok'
+      setApiStatus(available ? 'available' : 'unavailable')
+    } catch {
+      setApiStatus('unavailable')
+    } finally {
+      window.clearTimeout(timeout)
+    }
+  }
 
   const showDemoStep = (step: DemoStep) => {
     setDemoStep(step)
@@ -122,6 +139,17 @@ function App() {
         <section className="intro section-wrap" id="como-funciona">
           <div className="section-heading"><div><span className="section-kicker"><span>✳</span> EL CONTEXTO IMPORTA</span><h2>Pequeños datos.<br /><em>Gran diferencia.</em></h2></div><p>Una foto o un documento puede contener detalles que no se ven a simple vista. MetaGuard está pensado para hacerlos más fáciles de entender.</p></div>
           <div className="steps-grid">{steps.map(({ n, icon: Icon, title, text }) => <article className="step-card" key={n}><div className="step-top"><span className="step-icon"><Icon size={22} strokeWidth={1.5} /></span><span>{n} / 03</span></div><div><h3>{title}</h3><p>{text}</p></div><ArrowUpRight className="step-arrow" size={17} /></article>)}</div>
+        </section>
+
+        <section className="section-wrap" aria-label="Estado de la API">
+        <div className="api-health">
+          <button type="button" onClick={checkApi} disabled={apiStatus === 'checking'}>Comprobar API</button>
+          <span role="status" aria-live="polite">
+            {apiStatus === 'checking' && 'Comprobando API…'}
+            {apiStatus === 'available' && 'API disponible; procesamiento de archivos aún no conectado.'}
+            {apiStatus === 'unavailable' && 'No se pudo comprobar la API.'}
+          </span>
+        </div>
         </section>
 
         <section className="demo-section section-wrap" id="demostracion" aria-labelledby="demo-title">
