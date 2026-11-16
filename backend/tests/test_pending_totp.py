@@ -123,3 +123,73 @@ def test_cleanup_never_removes_other_account_or_invalid_time(session):
         assert not remove_expired_pending(session, "account-2", now=now)
     assert not remove_expired_pending(session, "account-1", now=2)
     assert session.scalar(select(PendingTotp.account_id)) == "account-2"
+
+
+def test_confirm_activates_only_valid_unexpired_pending(session):
+    import pyotp
+
+    from metaguard_api.account_totp import AccountTotp
+    from metaguard_api.pending_totp import confirm_totp
+    from metaguard_api.totp_verification import consume_totp
+
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert stage_totp(
+        session, "account-1", secret, key=bytes(32), key_version=1, now=90, expires_at=120
+    )
+    code = pyotp.TOTP(secret).at(90)
+    assert not confirm_totp(session, "account-1", "xxxxxx", key=bytes(32), key_version=1, now=90)
+    assert session.scalar(select(AccountTotp)) is None
+    assert not confirm_totp(session, "account-1", code, key=bytes(32), key_version=1, now=120)
+    assert confirm_totp(session, "account-1", code, key=bytes(32), key_version=1, now=90)
+    assert session.scalar(select(PendingTotp)) is None
+    assert session.scalar(select(AccountTotp.last_accepted_step)) == 3
+    assert not consume_totp(session, "account-1", code, key=bytes(32), key_version=1, now=90)
+
+
+def test_confirm_rollback_restores_pending(session):
+    import pyotp
+
+    from metaguard_api.account_totp import AccountTotp
+    from metaguard_api.pending_totp import confirm_totp
+
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert stage_totp(
+        session, "account-1", secret, key=bytes(32), key_version=1, now=90, expires_at=120
+    )
+    session.commit()
+    assert confirm_totp(
+        session, "account-1", pyotp.TOTP(secret).at(90), key=bytes(32), key_version=1, now=90
+    )
+    session.rollback()
+    assert session.scalar(select(AccountTotp)) is None
+    assert session.scalar(select(PendingTotp)) is not None
+
+
+@pytest.mark.parametrize("action", ["ABORT", "IGNORE"])
+def test_confirmation_delete_failure_does_not_leave_active_credential(session, action):
+    import pyotp
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    from metaguard_api.account_totp import AccountTotp
+    from metaguard_api.pending_totp import confirm_totp
+
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert stage_totp(
+        session, "account-1", secret, key=bytes(32), key_version=1, now=90, expires_at=120
+    )
+    session.commit()
+    trigger_action = "RAISE(ABORT, 'denied')" if action == "ABORT" else "RAISE(IGNORE)"
+    session.execute(
+        text(
+            "CREATE TRIGGER deny_pending_delete BEFORE DELETE ON pending_totp "
+            f"BEGIN SELECT {trigger_action}; END"
+        )
+    )
+    with pytest.raises(IntegrityError if action == "ABORT" else RuntimeError):
+        confirm_totp(
+            session, "account-1", pyotp.TOTP(secret).at(90), key=bytes(32), key_version=1, now=90
+        )
+    session.commit()
+    assert session.scalar(select(AccountTotp)) is None
+    assert session.scalar(select(PendingTotp)) is not None
