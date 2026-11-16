@@ -43,7 +43,7 @@ def test_purge_command_commits_only_expired_entries(tmp_path, monkeypatch, capsy
     monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: 86_500)
 
     assert main(["purge-reputation"]) == 0
-    assert "1" in capsys.readouterr().out
+    assert capsys.readouterr().out == "Purged 1 expired reputation cache entries.\n"
     check_db = Database(create_engine(url))
     with check_db.transaction() as session:
         assert get_verdict(session, "a" * 64, now=100) is None
@@ -58,21 +58,35 @@ def test_purge_failure_rolls_back_and_hides_details(tmp_path, monkeypatch, capsy
     db = Database(engine)
     with db.transaction() as session:
         save_verdict(session, "a" * 64, CacheVerdict.NO_RECORD, now=100)
+        from metaguard_api.system_security_events import (
+            SecurityEventType,
+            record_event,
+        )
+
+        record_event(session, SecurityEventType.PASSWORD_BREACH_CHECK_UNAVAILABLE, now=100)
 
     def fail_after_delete(session, *, now):
         from metaguard_api.reputation_cache import purge_expired
 
         purge_expired(session, now=now)
+        from metaguard_api.system_security_events import purge_expired_events
+
+        purge_expired_events(session, now=now)
         raise RuntimeError("sensitive error details")
 
     monkeypatch.setattr("metaguard_api.maintenance.create_database", lambda *_args, **_kwargs: db)
     monkeypatch.setattr("metaguard_api.maintenance.purge_expired", fail_after_delete)
     monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: 100_000)
-    assert main(["purge-reputation"]) == 1
+    assert main(["purge-maintenance"]) == 1
     assert "sensitive" not in capsys.readouterr().err
     check_db = Database(create_engine(url))
     with check_db.transaction() as session:
         assert get_verdict(session, "a" * 64, now=100) == CacheVerdict.NO_RECORD
+        from sqlalchemy import select
+
+        from metaguard_api.system_security_events import SystemSecurityEvent
+
+        assert len(session.scalars(select(SystemSecurityEvent)).all()) == 1
     check_db.close()
 
 
@@ -92,7 +106,7 @@ def test_scheduler_retries_failed_runs_and_stops(monkeypatch) -> None:
             stop.requested = True
 
     monkeypatch.setattr("metaguard_api.maintenance._wait_for_interval", wait)
-    monkeypatch.setattr("metaguard_api.maintenance.purge_once", purge_once)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_maintenance_once", purge_once)
     assert main(["schedule-reputation", "--interval-seconds", "60"]) == 0
     assert calls == [1, 0]
     assert waits == [60, 60]
@@ -118,7 +132,7 @@ def test_scheduler_stops_on_sigterm_and_restores_handler(monkeypatch) -> None:
         stops.append(stop.requested)
 
     monkeypatch.setattr("metaguard_api.maintenance._wait_for_interval", wait)
-    monkeypatch.setattr("metaguard_api.maintenance.purge_once", lambda: 0)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_maintenance_once", lambda: 0)
     assert main(["schedule-reputation"]) == 0
     assert stops == [True]
     assert signal.getsignal(signal.SIGTERM) == previous
@@ -138,7 +152,7 @@ def test_real_sigterm_during_wait_exits_without_deadlock() -> None:
 import inspect, signal, sys
 from metaguard_api import maintenance
 calls = []
-maintenance.purge_once = lambda: calls.append(1) or 0
+maintenance.purge_maintenance_once = lambda: calls.append(1) or 0
 previous = signal.getsignal(signal.SIGTERM)
 source, offset = inspect.getsourcelines(maintenance._wait_for_interval)
 sleep_line = offset + next(i for i, line in enumerate(source) if 'time.sleep(' in line)
@@ -157,3 +171,62 @@ assert signal.getsignal(signal.SIGTERM) == previous
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=15
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_purge_command_also_enforces_security_event_retention(tmp_path, monkeypatch, capsys):
+    from sqlalchemy import select
+
+    from metaguard_api.system_security_events import (
+        SecurityEventType,
+        SystemSecurityEvent,
+        record_event,
+    )
+
+    url = f"sqlite:///{tmp_path / 'retention.sqlite'}"
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    db = Database(engine)
+    with db.transaction() as session:
+        record_event(session, SecurityEventType.PASSWORD_BREACH_CHECK_UNAVAILABLE, now=100)
+        record_event(session, SecurityEventType.PASSWORD_BREACH_CHECK_UNAVAILABLE, now=200)
+    monkeypatch.setattr("metaguard_api.maintenance.create_database", lambda *_args, **_kwargs: db)
+    monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: 100 + 30 * 24 * 60 * 60)
+
+    assert main(["purge-maintenance"]) == 0
+    output = capsys.readouterr().out
+    assert "Purged 0 expired reputation cache entries." in output
+    assert "1 expired system security events" in output
+    check_db = Database(create_engine(url))
+    with check_db.transaction() as session:
+        assert len(session.scalars(select(SystemSecurityEvent)).all()) == 1
+        assert session.scalar(select(SystemSecurityEvent.created_at)) == 200
+    check_db.close()
+
+
+def test_legacy_reputation_purge_does_not_require_security_event_schema(
+    tmp_path, monkeypatch, capsys
+):
+    from metaguard_api.reputation_cache import ReputationEntry
+
+    url = f"sqlite:///{tmp_path / 'legacy.sqlite'}"
+    engine = create_engine(url)
+    ReputationEntry.__table__.create(engine)
+    db = Database(engine)
+    monkeypatch.setattr("metaguard_api.maintenance.create_database", lambda *_args, **_kwargs: db)
+    assert main(["purge-reputation"]) == 0
+    assert capsys.readouterr().out == "Purged 0 expired reputation cache entries.\n"
+    db.close()
+
+
+def test_schedule_maintenance_alias_runs_joint_retention(monkeypatch):
+    calls = []
+
+    def stop_after_first_run(stop, _seconds):
+        stop.requested = True
+
+    monkeypatch.setattr("metaguard_api.maintenance._wait_for_interval", stop_after_first_run)
+    monkeypatch.setattr(
+        "metaguard_api.maintenance.purge_maintenance_once", lambda: calls.append("joint") or 0
+    )
+    assert main(["schedule-maintenance"]) == 0
+    assert calls == ["joint"]

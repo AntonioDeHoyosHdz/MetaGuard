@@ -24,6 +24,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2h (S1–S3): Confirm pending TOTP with an unexpired code and activate atomically under account-level serialization; route: inline and independent verification; status: complete for internal primitive; commit: `4939518`. Risk: items 1, 2 and 4.
 - T2i (S1–S3): Implement password screening with breached-password lookup and explicit local fallback, without exposing incomplete registration; route: inline with independent security verification; status: complete for internal primitive; commit: `39bae76`. Risk: item 2.
 - T2j (S1–S3): Persist minimized service-security events with 30-day retention support for password-screening outages; route: inline with independent security verification; status: complete for internal store; commit: pending. Risk: items 1, 2 and 4.
+- T2k (S1–S3): Schedule security-event retention in the existing maintenance loop with an atomic shared transaction; route: inline with independent verification; status: complete for local schedule; commit: pending. Risk: items 1, 4 and 5.
 - T3 (S1–S3): Implement isolated file processing, cleanup and verification; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 1–5.
 - T4 (S1–S3): Connect the frontend to real API workflows with honest error states; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2–3.
 - T4a (S1–S3): Connect the visual frontend to the real API liveness endpoint with honest, accessible error states and no file processing claims; route: inline with independent environment verification; status: complete for liveness only; commit: `c386b44`. Risk: items 3 and 5.
@@ -87,3 +88,9 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2j: provide a persistent, allowlisted system-event store and retention operation needed by the documented password-check outage fallback. No endpoint or scheduled retention is implied; account-linked audit and production PostgreSQL verification remain pending. Engram mirror pending: runtime identity unavailable.
 
 - T2j: observed RED then GREEN; 130 backend tests and Ruff passed. Independent verifier checked migration, existing-data preservation, 30-day cutoff and SQLite races. Added separately committed outage reporting after proving a shared account transaction could lose the audit on rollback; recheck passed. SQLite lock requires screening before account writes. No scheduler, public registration or live PostgreSQL verification is claimed.
+
+- User request resumed the full project. T2k extends existing periodic maintenance to events without a separate unsupervised scheduler; tests prove atomic retention only, not deployed supervision.
+
+- T2k verification note: an independent review caught a compatibility regression when the old cache-only command began requiring the new events table and changed output. Kept its legacy scope/output; added a separate atomic `purge-maintenance` command, used by the scheduler.
+
+- T2k GREEN: 133 backend tests and Ruff passed. Independent verifier confirmed legacy `purge-reputation` output and behavior unchanged; `purge-maintenance` and scheduled maintenance share an atomic transaction; cutoff, rollback, error privacy, cadence and SIGTERM passed SQLite checks. Production PostgreSQL and deployed supervision remain unverified. Risk: item 1 (retention deletion), item 4 (scheduler/concurrency), item 5 (runtime).

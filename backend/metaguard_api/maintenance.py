@@ -7,22 +7,44 @@ import time
 
 from metaguard_api.database import DatabaseSettings, create_database
 from metaguard_api.reputation_cache import purge_expired
+from metaguard_api.system_security_events import purge_expired_events
 
 
-def purge_once() -> int:
-    """Run one transaction, reporting failures without sensitive details."""
+def _purge_once(*, include_security_events: bool) -> int:
+    """Run selected retention deletes in one transaction with generic errors."""
     try:
         database = create_database(DatabaseSettings(), connect_timeout_seconds=3)
         try:
             with database.transaction() as session:
-                deleted = purge_expired(session, now=int(time.time()))
+                now = int(time.time())
+                deleted = purge_expired(session, now=now)
+                deleted_events = (
+                    purge_expired_events(session, now=now) if include_security_events else 0
+                )
         finally:
             database.close()
     except Exception:
-        print("Reputation cache maintenance failed.", file=sys.stderr)
+        message = (
+            "Scheduled maintenance failed."
+            if include_security_events
+            else "Reputation cache maintenance failed."
+        )
+        print(message, file=sys.stderr)
         return 1
     print(f"Purged {deleted} expired reputation cache entries.")
+    if include_security_events:
+        print(f"Purged {deleted_events} expired system security events.")
     return 0
+
+
+def purge_once() -> int:
+    """Preserve the legacy cache-only command and output."""
+    return _purge_once(include_security_events=False)
+
+
+def purge_maintenance_once() -> int:
+    """Atomically purge cache and expired system events."""
+    return _purge_once(include_security_events=True)
 
 
 def _purge_interval(value: str) -> int:
@@ -57,18 +79,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run MetaGuard maintenance tasks.")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("purge-reputation", help="Delete expired cache entries once.")
-    scheduled = commands.add_parser("schedule-reputation", help="Run the purge periodically.")
+    commands.add_parser(
+        "purge-maintenance", help="Delete expired cache entries and system events once."
+    )
+    scheduled = commands.add_parser(
+        "schedule-reputation",
+        aliases=["schedule-maintenance"],
+        help="Run reputation and security-event retention periodically.",
+    )
     scheduled.add_argument("--interval-seconds", type=_purge_interval, default=60)
     args = parser.parse_args(argv)
 
     if args.command == "purge-reputation":
         return purge_once()
+    if args.command == "purge-maintenance":
+        return purge_maintenance_once()
 
     stop = _StopFlag()
     previous = signal.signal(signal.SIGTERM, stop.request)
     try:
         while not stop.requested:
-            purge_once()
+            purge_maintenance_once()
             _wait_for_interval(stop, args.interval_seconds)
     except KeyboardInterrupt:
         pass
