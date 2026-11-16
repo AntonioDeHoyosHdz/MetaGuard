@@ -34,3 +34,50 @@ def test_alembic_runs_with_caller_owned_connection() -> None:
             assert "reputation_cache" not in inspect(connection).get_table_names()
     finally:
         engine.dispose()
+
+
+def test_account_schema_migration() -> None:
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "head")
+            columns = {item["name"] for item in inspect(connection).get_columns("accounts")}
+            assert columns == {"id", "email", "password_hash"}
+            command.check(cfg)
+            command.downgrade(cfg, "0001_reputation_cache")
+            assert "accounts" not in inspect(connection).get_table_names()
+            assert "reputation_cache" in inspect(connection).get_table_names()
+    finally:
+        engine.dispose()
+
+
+def test_account_email_constraints() -> None:
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "head")
+            insert = text(
+                "INSERT INTO accounts (id, email, password_hash) VALUES (:id, :email, :hash)"
+            )
+            connection.execute(
+                insert, {"id": "1", "email": "synthetic@example.test", "hash": "synthetic"}
+            )
+            for account_id, email in [
+                ("2", "synthetic@example.test"),
+                ("3", "Upper@example.test"),
+                ("4", "x"),
+            ]:
+                with pytest.raises(IntegrityError), connection.begin_nested():
+                    connection.execute(
+                        insert, {"id": account_id, "email": email, "hash": "synthetic"}
+                    )
+    finally:
+        engine.dispose()

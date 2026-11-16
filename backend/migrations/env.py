@@ -2,11 +2,12 @@
 
 from alembic import context
 
+from metaguard_api import reputation_cache  # noqa: F401
+from metaguard_api.accounts import Account
 from metaguard_api.database import DatabaseSettings, create_database
-from metaguard_api.reputation_cache import ReputationEntry
 
 config = context.config
-target_metadata = ReputationEntry.metadata
+target_metadata = Account.metadata
 
 
 def run_with_connection(connection):

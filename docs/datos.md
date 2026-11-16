@@ -12,7 +12,7 @@
 | Hash de contraseña | Autenticación | Mientras exista la cuenta | Argon2id; nunca texto claro | Parámetros Argon2id se decidirán en implementación. |
 | Secreto TOTP | MFA | Mientras exista la cuenta | AES-256-GCM | Gestión de llaves y recuperación. |
 | Caché de reputación | Respetar cuota de VirusTotal | 24 h | Solo hash/veredicto; sin contenido ni vínculo a usuario | Implementación interna parcial: entradas vencidas no se devuelven, pero la eliminación requiere programar la purga. Consulta y consentimiento pendientes. |
-| Identificador/correo de cuenta | Autenticación y alertas | No detallado en tabla U2; candidato: mientras exista cuenta | No especificado | Confirmar campos, finalidad, retención y cifrado. No guardar más por conveniencia. |
+| Correo de cuenta | Identificador de inicio de sesión y recuperación, según confirmación del usuario | Propuesto: mientras exista la cuenta; borrado pendiente | La primera migración lo almacena en texto plano y exige minúsculas y unicidad; protección de acceso y cifrado en reposo pendientes | Registro, verificación de correo, recuperación, política de normalización y retención verificable pendientes. |
 
 ## Reglas de minimización
 
@@ -24,3 +24,5 @@
 ## Qué pasa si falta
 
 Sin inventario no se pueden justificar finalidades, plazos, accesos ni cifrado, y se corre el riesgo de conservar datos personales fuera del alcance anunciado.
+
+La tabla inicial de cuentas es solo persistencia: todavía no existe un flujo de registro ni de recuperación. La normalización completa del correo, incluidos casos internacionales y direcciones con parte local sensible a mayúsculas, necesita definirse antes de habilitar esos flujos; no asumir que convertir a minúsculas funciona para todos los proveedores.
