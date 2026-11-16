@@ -14,8 +14,8 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2 (S1–S3): Implement account persistence and authentication with database migrations and tests; route: inline unless a named writer trigger applies; status: in progress; commit: pending. Risk: items 1–3.
 - T2a (S1–S3): Pin and restore approved account-security dependencies without builds; route: delegated install + independent verifier; status: complete; commit: `4627bf6`. Risk: item 5 (dependencies).
 - T2b (S1–S3): Implement and verify account credential primitives and persistence without exposing incomplete authentication; route: inline; status: in progress; commit: pending. Risk: items 1–3.
-- T2b1 (S1–S3): Add internal password hashing primitives and tests; route: inline with independent security verification; status: complete; commit: pending. Risk: item 2 (credentials).
-- T2b2 (S1–S3): Add account persistence without exposing incomplete authentication; route: inline; status: pending; commit: pending. Risk: items 1–3.
+- T2b1 (S1–S3): Add internal password hashing primitives and tests; route: inline with independent security verification; status: complete; commit: `66240a4`. Risk: item 2 (credentials).
+- T2b2 (S1–S3): Add account persistence without exposing incomplete authentication; route: inline; status: complete for initial schema only; commit: `e333da2`. Risk: items 1–3.
 - T3 (S1–S3): Implement isolated file processing, cleanup and verification; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 1–5.
 - T4 (S1–S3): Connect the frontend to real API workflows with honest error states; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2–3.
 - T5 (S1–S3): Prepare a reproducible, cost-conscious deployment and verify it in an authorized environment; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2, 5.
@@ -41,3 +41,4 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2b2: Added an initial accounts table migration with unique lowercase email and password hash columns, without exposing registration or login. Email normalization policy, verification, recovery, MFA, encryption at rest and real PostgreSQL verification remain pending. The SQLite migration test was RED before the migration and GREEN after it; independent security verification is pending.
 
 - Independent verifier found no blockers in schema-only scope: tested migration and prior cache preservation, 13 focused tests passed, and PostgreSQL SQL generated offline. SQLite lower() does not normalize all Unicode. Downgrade deletes account rows; no live database was touched. Full backend suite: 86 passed; Ruff passed. Engram mirror remains pending due to unregistered runtime session.
+- Documentation correction: synchronized the README and persistence guide with the actual image sequence, migrations, test evidence, and still-disconnected frontend.

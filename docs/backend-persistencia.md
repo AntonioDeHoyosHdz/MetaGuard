@@ -26,7 +26,7 @@ Desde `backend/`:
 uv run alembic upgrade head --sql
 ```
 
-El modo offline genera SQL PostgreSQL sin secretos ni conexión. La revisión `0001_reputation_cache` define únicamente la caché de reputación; no crea cuentas, reportes ni eventos. El SQL generado no demuestra que la migración funcione en un servidor PostgreSQL real.
+El modo offline genera SQL PostgreSQL sin secretos ni conexión. La revisión `0001_reputation_cache` define la caché de reputación; `0002_accounts` añade la estructura inicial de cuentas. No existen tablas de reportes ni eventos. El SQL generado no demuestra que la migración funcione en un servidor PostgreSQL real.
 
 El comando online `uv run alembic upgrade head` necesita PostgreSQL accesible y el archivo de secreto montado. Lee configuración al ejecutar, no guarda una URL con password en `alembic.ini` y cierra su engine incluso si falla. No ejecutar contra una DB de producción; no se ha definido TLS, respaldo ni rol de migraciones productivo.
 
@@ -34,7 +34,7 @@ El comando online `uv run alembic upgrade head` necesita PostgreSQL accesible y 
 
 Las pruebas usan SQLite exclusivamente para ciclo de transacciones y harness de Alembic. El test de URL captura la construcción del engine sin conexión y verifica password con caracteres reservados, repr oculto y parámetros no logueados. Esto **no demuestra compatibilidad ni conectividad PostgreSQL**.
 
-Docker responde en el entorno actual, pero la conexión a PostgreSQL real todavía no se ha probado. Tampoco hay esquema de usuarios/reportes/eventos, cifrado de campos, auth ni despliegue.
+Docker responde en el entorno actual, pero la conexión a PostgreSQL real todavía no se ha probado. La estructura inicial de cuentas existe, pero no hay tablas de reportes o eventos, cifrado de campos, autenticación ni despliegue.
 
 ## Caché de reputación
 

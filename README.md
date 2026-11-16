@@ -4,12 +4,11 @@ Plataforma web para detectar, explicar y eliminar metadatos de imágenes JPG/PNG
 
 ## Estado
 
-- Documentación base y dirección visual: redactadas; PR 1, 2 y 3 siguen apilados y abiertos.
-- Backend: esqueleto inicial de FastAPI, valores de límites aprobados para demo (todavía no aplicados a operaciones), lector de secretos montados como archivos (aún sin servicio Docker que los monte) y endpoint de liveness.
-- Autenticación, base de datos/migraciones, carga/descarga, purga, procesador y frontend: pendientes; no se declara ningún objetivo funcional completado.
-- Los límites aprobados son valores iniciales de demo, no mediciones ni valores de producción.
-- SQLAlchemy, Alembic y psycopg están fijados en el lockfile para la siguiente unidad de persistencia; instalarlos no crea tablas ni activa la conexión en la API.
-- Hay un helper de conexión/transacciones y harness Alembic vacío; ver `docs/backend-persistencia.md`. PostgreSQL real y modelos de negocio siguen sin verificar/implementar.
+- La interfaz es una demostración visual desconectada; no envía ni procesa archivos.
+- La API expone comprobaciones de vida y disponibilidad; dispone de componentes internos de caché y contraseñas, pero no de registro ni inicio de sesión.
+- Existen migraciones para la caché y la estructura inicial de cuentas. Se probaron con SQLite y SQL PostgreSQL generado sin conexión, no en PostgreSQL real.
+- El proceso de purga está implementado, pero no está desplegado ni supervisado. Procesamiento aislado, integración con frontend y despliegue siguen pendientes.
+- El detalle y las limitaciones están en `docs/backend-persistencia.md` y `odd/tasks/metaguard-completion.md`.
 
 ## Probar el backend inicial
 
@@ -37,4 +36,4 @@ npm ci
 npm run dev
 ```
 
-Abre la dirección local que indique Vite. Para comprobar la vista: `npm test` y `npm run build`. El cubo usa three.js empaquetado localmente y tiene respaldo SVG si no inicia WebGL; aún faltan mediciones de rendimiento y auditoría completa de accesibilidad.
+Abre la dirección local que indique Vite. Para comprobar la vista, ejecuta `npm test`. La animación utiliza una secuencia local de 20 fotogramas con respaldo SVG; aún faltan mediciones de rendimiento y auditoría completa de accesibilidad.
