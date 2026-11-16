@@ -96,8 +96,9 @@ def stage_totp(
         insert(PendingTotp)
         .from_select(["account_id", "encrypted_secret", "key_version", "expires_at"], source)
         .on_conflict_do_nothing(index_elements=[PendingTotp.account_id])
+        .returning(PendingTotp.account_id)
     )
-    return session.execute(statement).rowcount == 1
+    return session.execute(statement).scalar_one_or_none() is not None
 
 
 def remove_expired_pending(session: Session, account_id: str, *, now: int) -> bool:
@@ -170,8 +171,9 @@ def confirm_totp(
                 last_accepted_step=now // 30,
             )
             .on_conflict_do_nothing(index_elements=[AccountTotp.account_id])
+            .returning(AccountTotp.account_id)
         )
-        if result.rowcount != 1:
+        if result.scalar_one_or_none() is None:
             return False
         deleted = session.execute(delete(PendingTotp).where(PendingTotp.account_id == account_id))
         if deleted.rowcount != 1:

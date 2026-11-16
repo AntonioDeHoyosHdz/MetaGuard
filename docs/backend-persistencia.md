@@ -47,3 +47,16 @@ El proceso `python -m metaguard_api.maintenance schedule-reputation` ejecuta la 
 La migración incluye downgrade para entornos de prueba; revertir una tabla poblada elimina su contenido y requiere una decisión explícita. No se ha aplicado a una base real en esta unidad.
 
 El comando existente `purge-reputation` conserva su alcance y salida: borra solo caché vencida y no requiere el esquema de eventos. `purge-maintenance` purga en una misma transacción la caché y los eventos de seguridad con 30 días o más; informa ambos conteos y revierte ambos borrados si falla alguno. El ciclo programado ejecuta la misma operación conjunta; se inicia con `python -m metaguard_api.maintenance schedule-maintenance` o el nombre compatible `schedule-reputation`. No está supervisado ni instalado todavía; la retención física continúa sin garantía durante caídas.
+
+## Verificación local con PostgreSQL real
+
+En un contenedor PostgreSQL 16.13 efímero, con puerto ligado solo a loopback y un volumen anónimo propio del contenedor, pasaron `alembic upgrade head`, `alembic check`, `downgrade base`, `upgrade head` y una segunda comprobación de Alembic. También se ejercitaron inserción de cuenta, hash Argon2, staging/confirmación TOTP, replay y una carrera entre dos sesiones sobre el mismo paso; solo una aceptó. `purge-maintenance` eliminó un evento de más de 30 días y preservó uno dentro de retención. El contenedor y su volumen de prueba se eliminaron. Esto demuestra la compatibilidad local con ese motor; no prueba recuperación de respaldos, TLS, producción ni supervisión de servicios.
+
+La regresión de TOTP también tiene una prueba optativa contra PostgreSQL real. Desde `backend`, configurá `METAGUARD_DB_HOST` a `127.0.0.1`, `localhost` o `::1`, `METAGUARD_DB_NAME` exactamente como `metaguard_test` y `METAGUARD_DB_SECRET_DIR` con el secreto de prueba; luego ejecutá:
+
+```powershell
+$env:METAGUARD_RUN_POSTGRES_TESTS = "1"
+python -m pytest tests/test_postgresql_integration.py -q
+```
+
+La prueba rechaza cualquier host no local o nombre de base distinto. Usá solo una base descartable, nunca datos de producción. Sin la variable explícita, el test queda omitido en la suite habitual.
