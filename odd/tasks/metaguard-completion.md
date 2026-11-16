@@ -16,7 +16,8 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - T2b (S1–S3): Implement and verify account credential primitives and persistence without exposing incomplete authentication; route: inline; status: in progress; commit: pending. Risk: items 1–3.
 - T2b1 (S1–S3): Add internal password hashing primitives and tests; route: inline with independent security verification; status: complete; commit: `66240a4`. Risk: item 2 (credentials).
 - T2b2 (S1–S3): Add account persistence without exposing incomplete authentication; route: inline; status: complete for initial schema only; commit: `e333da2`. Risk: items 1–3.
-- T2c (S1–S3): Add internal authenticated encryption for TOTP secrets, bound to account identity; route: inline and independent security verification; status: complete; commit: pending. Risk: item 2.
+- T2c (S1–S3): Add internal authenticated encryption for TOTP secrets, bound to account identity; route: inline and independent security verification; status: complete; commit: `d09a014`. Risk: item 2.
+- T2d (S1–S3): Persist encrypted TOTP credentials, key version and last accepted time step in a separate account-owned table; no authentication endpoints; route: inline with independent verification; status: complete for schema only; commit: pending. Risk: items 1, 2 and 4.
 - T3 (S1–S3): Implement isolated file processing, cleanup and verification; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 1–5.
 - T4 (S1–S3): Connect the frontend to real API workflows with honest error states; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2–3.
 - T5 (S1–S3): Prepare a reproducible, cost-conscious deployment and verify it in an authorized environment; route: inline unless a named writer trigger applies; status: pending; commit: pending. Risk: items 2, 5.
@@ -47,3 +48,7 @@ Branch: `feat/frontend-visual` · Delivery: `stacked-to-main` · Tests: backend 
 - User requested: «Ejecuta todo lo que te hace falta entonces ponte en modo cualy y termina todo lo que te hace falta todo lo que acabamos de hablar.» T2c is a prerequisite only; no MFA or login endpoint is enabled. Engram mirror remains pending because session identity is not registered.
 
 - T2c: RED observed before implementation; 93 backend tests and Ruff passed. Independent verifier checked 117 malformed or tampered cases, 1,000 sampled nonces, account binding and unchanged API routes; no blockers. Key rotation, secret storage and MFA integration remain pending.
+
+- User request: «sigue los passoso de odd , y haz todos los folojs y todo loq eu te gacerf calt a». T2d prepares MFA persistence; no enrollment, login or replay protection is claimed until its transactional verification flow is implemented. Engram mirror remains pending: runtime session identity not registered.
+
+- T2d: RED reproduced before migration; 95 backend tests and Ruff passed. Independent verification passed migration, constraints, prior-data preservation, cascade and offline PostgreSQL SQL; no live PostgreSQL was used. Schema alone cannot enforce encrypted contents or prevent TOTP replay.

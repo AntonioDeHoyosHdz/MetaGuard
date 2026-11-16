@@ -81,3 +81,68 @@ def test_account_email_constraints() -> None:
                     )
     finally:
         engine.dispose()
+
+
+def test_totp_schema_migration_preserves_account_data() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0002_accounts")
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('1','a@b','hash')")
+            )
+            command.upgrade(cfg, "head")
+            assert {c["name"] for c in inspect(connection).get_columns("account_totp")} == {
+                "account_id",
+                "encrypted_secret",
+                "key_version",
+                "last_accepted_step",
+            }
+            command.check(cfg)
+            command.downgrade(cfg, "0002_accounts")
+            assert "account_totp" not in inspect(connection).get_table_names()
+            assert connection.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
+    finally:
+        engine.dispose()
+
+
+def test_totp_storage_constraints_and_account_deletion() -> None:
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    from metaguard_api.totp_secrets import encrypt_totp_secret
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "head")
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('1','a@b','hash')")
+            )
+            insert = text(
+                "INSERT INTO account_totp (account_id, encrypted_secret, "
+                "key_version, last_accepted_step) "
+                "VALUES (:id,:secret,:version,:step)"
+            )
+            secret = encrypt_totp_secret(bytes(32), "1", "synthetic-secret")
+            for values in [
+                {"id": "missing", "secret": secret, "version": 1, "step": None},
+                {"id": "1", "secret": secret, "version": 0, "step": None},
+                {"id": "1", "secret": b"bad", "version": 1, "step": None},
+                {"id": "1", "secret": secret, "version": 1, "step": -1},
+            ]:
+                with pytest.raises(IntegrityError), connection.begin_nested():
+                    connection.execute(insert, values)
+            connection.execute(insert, {"id": "1", "secret": secret, "version": 1, "step": None})
+            connection.execute(text("DELETE FROM accounts WHERE id='1'"))
+            assert connection.execute(text("SELECT count(*) FROM account_totp")).scalar_one() == 0
+    finally:
+        engine.dispose()

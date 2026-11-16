@@ -2,7 +2,7 @@
 
 from alembic import context
 
-from metaguard_api import reputation_cache  # noqa: F401
+from metaguard_api import account_totp, reputation_cache  # noqa: F401
 from metaguard_api.accounts import Account
 from metaguard_api.database import DatabaseSettings, create_database
 
