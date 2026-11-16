@@ -34,3 +34,9 @@ Sin inventario/rotación, un ciphertext exfiltrado puede volverse legible y una 
 `account_credentials` genera hashes Argon2id con sal aleatoria de 16 bytes y parámetros fijos (19 MiB, 2 iteraciones, paralelismo 1). Solo verifica el formato y los parámetros emitidos por esta versión; antes de cambiarlos hará falta una estrategia de migración y rehash. El límite de entrada de 1024 bytes UTF-8 protege recursos y no reemplaza una política de contraseñas. Se rechazan hashes malformados antes de llamar a Argon2.
 
 Este componente no implementa cuentas, inicio de sesión, MFA, controles de tasa ni recuperación; no debe exponerse como autenticación completa.
+
+## Cifrado interno de secretos TOTP
+
+El componente interno `totp_secrets` usa AES-256-GCM, una clave de 32 bytes suministrada por el llamador y un nonce aleatorio nuevo de 12 bytes por cifrado. Autentica el identificador de cuenta como dato asociado y rechaza alteraciones o claves equivocadas. El formato tiene una versión, pero todavía no incorpora identificador de clave ni rotación. No crea cuentas, almacena secretos, configura MFA ni lee automáticamente Docker Secrets; esas integraciones y el ciclo de vida de claves siguen pendientes.
+
+Al integrar este componente, el dato asociado debe ser el identificador de cuenta inmutable y canónico, no el correo, que puede cambiar.
