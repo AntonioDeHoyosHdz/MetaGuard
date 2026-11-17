@@ -107,6 +107,10 @@ class ProcessingSupervisorError(RuntimeError):
     """Raised when an isolated processing job cannot safely complete."""
 
 
+class ProcessingSupervisorCleanupError(ProcessingSupervisorError):
+    """Container cleanup could not be confirmed; further work must stop."""
+
+
 class ProcessorOutputLimitExceeded(RuntimeError):
     """Raised when the worker writes more than the bounded stdout allowance."""
 
@@ -310,19 +314,19 @@ class ProcessingSupervisor:
                     max_stdout_bytes=4096,
                     env=self._runtime.environment(),
                 )
-            except (OSError, subprocess.TimeoutExpired):
+            except Exception:
                 cleanup_failed = True
             else:
                 cleanup_failed = cleanup.returncode != 0
 
         if primary_error is not None:
             if cleanup_failed:
-                raise ProcessingSupervisorError(
+                raise ProcessingSupervisorCleanupError(
                     f"{primary_error}; container cleanup failed"
                 ) from primary_error
             raise primary_error
         if cleanup_failed:
-            raise ProcessingSupervisorError("Processor cleanup failed")
+            raise ProcessingSupervisorCleanupError("Processor cleanup failed")
         if processed is None:
             raise ProcessingSupervisorError("Processor returned no result")
         return processed
@@ -333,7 +337,7 @@ def _decode_response(raw_response: bytes, expected_media_type: str) -> Processed
         response = json.loads(
             raw_response.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys
         )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ProcessingSupervisorError("Processor returned an invalid response") from exc
     if not isinstance(response, dict) or frozenset(response) != {
         "cleaned_bytes_base64",

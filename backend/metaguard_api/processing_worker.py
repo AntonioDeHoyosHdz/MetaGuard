@@ -34,8 +34,8 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def process_request(request_bytes: bytes) -> bytes:
-    """Decode one bounded request, call the pure processor, and encode its result."""
+def decode_worker_request(request_bytes: bytes) -> tuple[bytes, str]:
+    """Decode only the fixed worker input schema without processing the file."""
     if not isinstance(request_bytes, bytes) or not request_bytes:
         raise WorkerProtocolError("Request must be non-empty bytes")
     if len(request_bytes) > MAX_REQUEST_BYTES:
@@ -45,7 +45,7 @@ def process_request(request_bytes: bytes) -> bytes:
         payload = json.loads(
             request_bytes.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys
         )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise WorkerProtocolError("Request is not valid JSON") from exc
     if not isinstance(payload, dict) or frozenset(payload) != _REQUEST_KEYS:
         raise WorkerProtocolError("Request does not match the worker schema")
@@ -62,6 +62,13 @@ def process_request(request_bytes: bytes) -> bytes:
         raise WorkerProtocolError("Encoded file is invalid") from exc
     if not data or len(data) > MAX_FILE_SIZE:
         raise WorkerProtocolError("File exceeds the processor size limit")
+
+    return data, content_type
+
+
+def process_request(request_bytes: bytes) -> bytes:
+    """Decode one bounded request, call the pure processor, and encode its result."""
+    data, content_type = decode_worker_request(request_bytes)
 
     try:
         result = process_file(data, content_type)
