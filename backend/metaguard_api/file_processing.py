@@ -11,7 +11,8 @@ from io import BytesIO
 import pikepdf
 from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
-MAX_FILE_SIZE = 25 * 1024 * 1024
+from metaguard_api.processing_limits import MAX_FILE_SIZE
+
 MAX_IMAGE_SIDE = 8_000
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_PDF_PAGES = 100

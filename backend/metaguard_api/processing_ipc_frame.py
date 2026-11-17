@@ -8,7 +8,7 @@ validate each message's worker schema. Decoding bytes is not authorization.
 from enum import IntEnum
 from struct import Struct
 
-from metaguard_api.processing_worker import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES
+from metaguard_api.processing_limits import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES
 
 _HEADER = Struct("!4sBBHI")
 _MAGIC = b"MGIP"

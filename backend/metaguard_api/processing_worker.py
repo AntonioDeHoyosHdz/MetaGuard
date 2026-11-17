@@ -15,12 +15,9 @@ from metaguard_api.file_processing import (
     ProcessedFile,
     process_file,
 )
+from metaguard_api.processing_limits import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES
 
 _ALLOWED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_MAX_BASE64_BYTES = 4 * ((MAX_FILE_SIZE + 2) // 3)
-_PROTOCOL_OVERHEAD_BYTES = 16 * 1024
-MAX_REQUEST_BYTES = _MAX_BASE64_BYTES + _PROTOCOL_OVERHEAD_BYTES
-MAX_RESPONSE_BYTES = _MAX_BASE64_BYTES + _PROTOCOL_OVERHEAD_BYTES
 _REQUEST_KEYS = frozenset({"content_type", "data_base64"})
 
 
