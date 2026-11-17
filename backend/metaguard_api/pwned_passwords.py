@@ -50,8 +50,11 @@ def fetch_password_range(prefix: str, headers: dict[str, str]) -> str:
                 raise RangeServiceUnavailable("Incomplete password range response")
         if len(body) > _MAX_RESPONSE_BYTES:
             raise RangeServiceUnavailable("Password range response exceeds limit")
-        return body.decode("ascii")
-    except (OSError, URLError, UnicodeError, HTTPException):
+        try:
+            return body.decode("ascii")
+        except UnicodeError:
+            raise InvalidRangeResponse("Password range response is not ASCII") from None
+    except (OSError, URLError, HTTPException):
         raise RangeServiceUnavailable("Password range service unavailable") from None
 
 

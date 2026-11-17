@@ -8,6 +8,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler
 import pytest
 
 from metaguard_api.pwned_passwords import (
+    InvalidRangeResponse,
     RangeServiceUnavailable,
     fetch_password_range,
     is_compromised,
@@ -67,14 +68,21 @@ def test_transport_disables_proxies_and_redirects(monkeypatch) -> None:
     assert handlers[1].redirect_request(None, None, 302, "", {}, "https://other.invalid") is None
 
 
-@pytest.mark.parametrize("body,status", [(b"x" * 2_000_001, 200), (b"ok", 503), (b"\xff", 200)])
-def test_transport_rejects_untrustworthy_responses(monkeypatch, body, status) -> None:
+@pytest.mark.parametrize(
+    "body,status,error",
+    [
+        (b"x" * 2_000_001, 200, RangeServiceUnavailable),
+        (b"ok", 503, RangeServiceUnavailable),
+        (b"\xff", 200, InvalidRangeResponse),
+    ],
+)
+def test_transport_rejects_untrustworthy_responses(monkeypatch, body, status, error) -> None:
     response = MagicMock(status=status)
     response.read.return_value = body
     opener = MagicMock()
     opener.open.return_value.__enter__.return_value = response
     monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
-    with pytest.raises(RangeServiceUnavailable):
+    with pytest.raises(error):
         fetch_password_range("ABCDE", {"Add-Padding": "true"})
 
 
