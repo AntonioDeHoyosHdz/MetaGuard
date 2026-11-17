@@ -45,3 +45,9 @@ The proposal's seeded corpus (20 images and 10 active-content PDFs) was not avai
 The private `ProcessingSupervisor` now requires a `DockerRuntimeConfig` supplied by trusted host code: absolute Linux executable, local Unix socket path, absolute Docker configuration directory, and SHA-256-pinned image reference. No runtime value comes from an upload. The launch and cleanup processes receive only the configured Docker endpoint and configuration directory, not the inherited environment. This replaces the previous implicit executable and mutable image tag; callers must configure the runtime explicitly.
 
 Path and digest syntax do not verify ownership, executable integrity, socket identity, Docker configuration contents, or image provenance. Those are deployment responsibilities. The supervisor remains unconnected to the API; Linux Docker runtime, isolation, cleanup and Windows compatibility have not been verified.
+
+## Candidate API–supervisor frame codec
+
+`processing_ipc_frame` defines a codec for exactly one version-1 frame: a 12-byte network-order header (`MGIP` magic, version, kind, zero reserved bits, unsigned payload length) and its payload. Request and success payloads must be nonempty and fit the existing worker request and response limits; error payloads are empty. The codec rejects invalid headers, lengths, truncation and trailing frames, and `decode_header` permits length validation before a transport reads a body.
+
+This is **not an IPC service**. It does not perform socket reads, deadlines, peer authentication, ancillary-data handling, concurrency admission, EOF verification or worker JSON-schema validation. A future transport must enforce all of those before the codec can support real uploads; loading the codec currently also imports the worker's parser dependencies. No API endpoint or file-processing connection is enabled by this change.
