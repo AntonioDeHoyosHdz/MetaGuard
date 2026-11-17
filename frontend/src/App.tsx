@@ -38,7 +38,7 @@ const steps = [
 ]
 
 function App() {
-  const [apiStatus, setApiStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle')
+  const [apiStatus, setApiStatus] = useState<'idle' | 'checking' | 'ready' | 'database-unavailable' | 'unavailable'>('idle')
   const [risk, setRisk] = useState<Risk>('Alto')
   const [demoStep, setDemoStep] = useState<DemoStep>('carga')
   const [focusDemoStage, setFocusDemoStage] = useState(false)
@@ -58,10 +58,30 @@ function App() {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 5000)
     try {
-      const response = await fetch('/health/live', { credentials: 'omit', cache: 'no-store', signal: controller.signal })
-      const body: unknown = response.ok ? await response.json() : null
-      const available = typeof body === 'object' && body !== null && 'status' in body && body.status === 'ok'
-      setApiStatus(available ? 'available' : 'unavailable')
+      const liveResponse = await fetch('/health/live', {
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      const liveBody: unknown = liveResponse.ok ? await liveResponse.json() : null
+      const apiAvailable = typeof liveBody === 'object' && liveBody !== null && 'status' in liveBody && liveBody.status === 'ok'
+      if (!apiAvailable) {
+        setApiStatus('unavailable')
+        return
+      }
+
+      try {
+        const readyResponse = await fetch('/health/ready', {
+          credentials: 'omit',
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const readyBody: unknown = readyResponse.ok ? await readyResponse.json() : null
+        const databaseReady = typeof readyBody === 'object' && readyBody !== null && 'status' in readyBody && readyBody.status === 'ok'
+        setApiStatus(databaseReady ? 'ready' : 'database-unavailable')
+      } catch {
+        setApiStatus('database-unavailable')
+      }
     } catch {
       setApiStatus('unavailable')
     } finally {
@@ -146,7 +166,8 @@ function App() {
           <button type="button" onClick={checkApi} disabled={apiStatus === 'checking'}>Comprobar API</button>
           <span role="status" aria-live="polite">
             {apiStatus === 'checking' && 'Comprobando API…'}
-            {apiStatus === 'available' && 'API disponible; procesamiento de archivos aún no conectado.'}
+            {apiStatus === 'ready' && 'API y base de datos disponibles; procesamiento de archivos aún no conectado.'}
+            {apiStatus === 'database-unavailable' && 'API disponible; base de datos no disponible.'}
             {apiStatus === 'unavailable' && 'No se pudo comprobar la API.'}
           </span>
         </div>
