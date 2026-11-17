@@ -1,5 +1,7 @@
 # API REST — contrato inicial propuesto
 
+La composición interna de contraseña y TOTP requiere una sesión sin cambios ORM pendientes y devuelve un identificador provisional únicamente después de verificar ambos factores. El llamador debe confirmar la transacción antes de conceder acceso. Esta función privada no crea sesiones ni implementa una ruta, CSRF, límites de intentos o recuperación; su comportamiento concurrente aún requiere pruebas con PostgreSQL real.
+
 **Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; las sondas `/health/live` y `/health/ready` están implementadas. Las 18 rutas funcionales no están implementadas. El OpenAPI actual no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
 
 ## Rutas
