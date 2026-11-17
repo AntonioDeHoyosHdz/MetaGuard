@@ -1,7 +1,11 @@
 import pytest
 from argon2 import PasswordHasher
 
-from metaguard_api.account_credentials import hash_password, verify_password
+from metaguard_api.account_credentials import (
+    hash_password,
+    is_approved_password_hash,
+    verify_password,
+)
 
 
 def test_hash_uses_argon2id_with_unique_salts_and_verifies() -> None:
@@ -25,12 +29,23 @@ def test_invalid_or_unbounded_hash_is_rejected_before_argon2(monkeypatch) -> Non
     valid = hash_password("synthetic-password")
     weak = valid.replace("m=19456", "m=8")
     huge = valid.replace("m=19456", "m=999999999")
+    prefix, salt, digest = valid.rsplit("$", maxsplit=2)
+    noncanonical_salt = f"{prefix}${salt[:-1]}B${digest}"
+    noncanonical_digest = f"{prefix}${salt}${digest[:-1]}B"
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("Untrusted parameters must not reach Argon2")
 
     monkeypatch.setattr(PasswordHasher, "verify", forbidden)
-    for encoded in ["invalid", weak, huge, "x" * 513]:
+    for encoded in [
+        "invalid",
+        weak,
+        huge,
+        "x" * 513,
+        noncanonical_salt,
+        noncanonical_digest,
+    ]:
+        assert not is_approved_password_hash(encoded)
         assert not verify_password("synthetic-password", encoded)
 
 

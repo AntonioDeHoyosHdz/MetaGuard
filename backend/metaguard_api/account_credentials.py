@@ -1,5 +1,7 @@
 """Internal password hashing primitives, not an authentication or password-policy API."""
 
+import base64
+import binascii
 import re
 
 from argon2 import PasswordHasher, Type, extract_parameters
@@ -10,7 +12,7 @@ _HASHER = PasswordHasher(
 )
 _MAX_PASSWORD_BYTES = 1024
 _HASH_FORMAT = re.compile(
-    r"\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}"
+    r"\$argon2id\$v=19\$m=19456,t=2,p=1\$([A-Za-z0-9+/]{22})\$([A-Za-z0-9+/]{43})"
 )
 
 
@@ -33,24 +35,38 @@ def hash_password(password: str) -> str:
         raise RuntimeError("Password hashing unavailable") from None
 
 
-def verify_password(password: str, encoded: str) -> bool:
-    """Reject malformed or unapproved parameters before invoking Argon2."""
-    if not _valid_password(password) or not isinstance(encoded, str):
+def is_approved_password_hash(encoded: object) -> bool:
+    """Return whether a PHC string matches the application's Argon2id profile."""
+    if not isinstance(encoded, str):
         return False
-    if _HASH_FORMAT.fullmatch(encoded) is None:
+    match = _HASH_FORMAT.fullmatch(encoded)
+    if match is None:
         return False
     try:
+        for value in match.groups():
+            padding = "=" * (-len(value) % 4)
+            decoded = base64.b64decode(value + padding, validate=True)
+            if base64.b64encode(decoded).decode("ascii").rstrip("=") != value:
+                return False
         params = extract_parameters(encoded)
-        if (
-            params.type != Type.ID
-            or params.version != 19
-            or params.memory_cost != 19_456
-            or params.time_cost != 2
-            or params.parallelism != 1
-            or params.salt_len != 16
-            or params.hash_len != 32
-        ):
-            return False
+        return (
+            params.type == Type.ID
+            and params.version == 19
+            and params.memory_cost == 19_456
+            and params.time_cost == 2
+            and params.parallelism == 1
+            and params.salt_len == 16
+            and params.hash_len == 32
+        )
+    except (binascii.Error, InvalidHashError, VerificationError, ValueError):
+        return False
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    """Reject malformed or unapproved parameters before invoking Argon2."""
+    if not _valid_password(password) or not is_approved_password_hash(encoded):
+        return False
+    try:
         return _HASHER.verify(encoded, password)
     except (InvalidHashError, VerificationError):
         return False

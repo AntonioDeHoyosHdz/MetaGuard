@@ -2,7 +2,7 @@
 
 **Propósito:** limitar acceso a llaves de cifrado y credenciales externas. **Estado:** el usuario eligió Docker Secrets montados al runtime como fuente para la demo el 30 de octubre de 2026. KMS, responsables y rotación periódica de producción siguen pendientes. La aprobación no define el canal API–worker ni autoriza compartir secretos con el worker.
 
-El entorno del backend incluye bibliotecas fijadas para Argon2id, AES-GCM, JWT y TOTP, con pruebas básicas de sus primitivas. Esto **no implementa todavía** cuentas, MFA, cifrado de campos, gestión de sesiones ni recuperación; sus parámetros y flujos deben verificarse al integrarlos.
+El entorno del backend incluye bibliotecas fijadas para Argon2id, AES-GCM, JWT y TOTP, con pruebas de sus primitivas y algunos componentes internos de cuentas. Eso no equivale a registro o acceso públicos ni a un flujo de MFA integrado; sesiones, CSRF y recuperación siguen pendientes. Los parámetros y flujos deben verificarse al integrarlos.
 
 ## Inventario y acceso propuesto
 
@@ -31,7 +31,7 @@ Sin inventario/rotación, un ciphertext exfiltrado puede volverse legible y una 
 
 ## Protección de contraseñas: componente interno
 
-`account_credentials` genera hashes Argon2id con sal aleatoria de 16 bytes y parámetros fijos (19 MiB, 2 iteraciones, paralelismo 1). Solo verifica el formato y los parámetros emitidos por esta versión; antes de cambiarlos hará falta una estrategia de migración y rehash. El límite de entrada de 1024 bytes UTF-8 protege recursos y no reemplaza una política de contraseñas. Se rechazan hashes malformados antes de llamar a Argon2.
+`account_credentials` genera hashes Argon2id con sal aleatoria de 16 bytes y parámetros fijos (19 MiB, 2 iteraciones, paralelismo 1). Solo verifica el formato, la codificación Base64 canónica y los parámetros emitidos por esta versión; antes de cambiarlos hará falta una estrategia de migración y rehash. El límite de entrada de 1024 bytes UTF-8 protege recursos y no reemplaza una política de contraseñas. Se rechazan hashes malformados antes de llamar a Argon2.
 
 Este componente no implementa cuentas, inicio de sesión, MFA, controles de tasa ni recuperación; no debe exponerse como autenticación completa.
 
@@ -58,6 +58,12 @@ El correo se acepta únicamente si ya es una identidad en minúsculas de entre 3
 Este servicio es un prerrequisito privado, no expone una ruta HTTP y no implementa verificación de correo, recuperación, inicio de sesión, sesiones, JWT, CSRF, MFA ni límites de solicitudes. La integración pública permanece pendiente de resolver esas políticas y protecciones.
 
 `registration_verification.register_account_with_email_verification` compone el registro y la preparación del token dentro de la transacción aportada por el llamador. El llamador entrega `now` y `expires_at`; la función no elige una duración, no envía correo ni confirma la transacción. Devuelve el token sin procesar solo en memoria al llamador y la base conserva únicamente su digest. Si falla el registro o no se puede preparar el token, se propaga una excepción para que el contexto transaccional del llamador revierta ambas escrituras. No abre un savepoint antes de la primera escritura.
+
+## Verificación privada de primer factor
+
+`check_first_factor` consulta una cuenta solo si la identidad es UTF-8 válida, está en minúsculas y tiene un único `@` con ambos lados no vacíos (sin intentar una validación RFC completa); verifica la contraseña y rechaza cuentas cuyo correo no esté verificado. Para identidades inexistentes o malformadas usa un hash Argon2id aprobado que el llamador debe suministrar; los hashes almacenados que no cumplen ese perfil también usan el hash dummy y fallan cerrados. El servicio no crea un hash predeterminado ni una contraseña compartida. Una contraseña válida en una cuenta con TOTP devuelve `MFA_REQUIRED`; sin TOTP devuelve `PASSWORD_VERIFIED`. Ambos resultados son estados internos, no sesiones ni autorización: la función no confirma la transacción, emite tokens, consume TOTP ni cambia datos. El rechazo no distingue entre identidad inexistente, contraseña incorrecta y correo pendiente de verificar.
+
+Este componente no es una ruta pública y no implementa límites de intentos, bloqueo, sesiones, JWT, cookies, CSRF ni entrega de correo. Quedan pendientes la integración pública y las políticas de acceso completas; `PASSWORD_VERIFIED` nunca debe tratarse como autenticación final.
 
 ## Verificación de correo: componente interno
 
