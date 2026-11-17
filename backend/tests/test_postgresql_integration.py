@@ -2,6 +2,7 @@
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from threading import Barrier
 from uuid import uuid4
 
@@ -11,8 +12,9 @@ from sqlalchemy import delete, select
 
 from metaguard_api.account_credentials import hash_password, verify_password
 from metaguard_api.account_totp import AccountTotp
-from metaguard_api.accounts import Account
+from metaguard_api.accounts import Account, EmailVerificationToken
 from metaguard_api.database import DatabaseSettings, create_database
+from metaguard_api.email_verification import consume_email_verification, prepare_email_verification
 from metaguard_api.pending_totp import PendingTotp, confirm_totp, stage_totp
 from metaguard_api.registration import RegistrationConflict, register_account
 from metaguard_api.totp_verification import consume_totp
@@ -201,6 +203,54 @@ def test_postgres_account_totp_activation_and_replay_race() -> None:
                 )
                 is None
             )
+    finally:
+        with database.transaction() as session:
+            session.execute(delete(Account).where(Account.id == account_id))
+        database.close()
+
+
+def test_postgres_email_verification_digest_consume_and_race() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    settings = DatabaseSettings()
+    if settings.host not in {"127.0.0.1", "localhost", "::1"} or settings.name != "metaguard_test":
+        pytest.fail("PostgreSQL integration tests only allow loopback metaguard_test.")
+    database = create_database(settings, connect_timeout_seconds=3)
+    account_id = str(uuid4())
+    now = datetime.now(UTC)
+    try:
+        with database.transaction() as session:
+            session.add(
+                Account(
+                    id=account_id,
+                    email=f"{account_id}@example.test",
+                    password_hash=hash_password("Synthetic PostgreSQL test password!"),
+                )
+            )
+        with database.transaction() as session:
+            token = prepare_email_verification(
+                session, account_id, now=now, expires_at=now + timedelta(minutes=30)
+            )
+        assert token is not None
+        with database.transaction() as session:
+            stored = session.get(EmailVerificationToken, account_id)
+            assert stored is not None
+            assert stored.token_digest == sha256(token.encode("utf-8")).hexdigest()
+            assert stored.token_digest != token
+
+        barrier = Barrier(2)
+
+        def consume() -> bool:
+            with database.transaction() as session:
+                barrier.wait(timeout=5)
+                return consume_email_verification(session, token, now=now + timedelta(minutes=1))
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(lambda _index: consume(), range(2))) == [False, True]
+        with database.transaction() as session:
+            account = session.get(Account, account_id)
+            assert account is not None and account.email_verified_at == now + timedelta(minutes=1)
+            assert session.get(EmailVerificationToken, account_id) is None
     finally:
         with database.transaction() as session:
             session.execute(delete(Account).where(Account.id == account_id))

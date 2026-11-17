@@ -57,4 +57,12 @@ El correo se acepta únicamente si ya es una identidad en minúsculas de entre 3
 
 Este servicio es un prerrequisito privado, no expone una ruta HTTP y no implementa verificación de correo, recuperación, inicio de sesión, sesiones, JWT, CSRF, MFA ni límites de solicitudes. La integración pública permanece pendiente de resolver esas políticas y protecciones.
 
+## Verificación de correo: componente interno
+
+La cuenta incluye `email_verified_at`, nullable y en UTC; las cuentas existentes migran como no verificadas sin cambiar su correo ni su hash de contraseña. `email_verification_tokens` conserva como máximo un token pendiente por cuenta y guarda únicamente el digest SHA-256 de un token aleatorio de alta entropía. Preparar uno nuevo invalida el anterior dentro de la transacción del llamador.
+
+El servicio interno exige que el llamador suministre `now` y `expires_at` como fechas UTC; no define una duración ni envía correo. El consumo comprueba el digest y la caducidad, borra el token y marca la cuenta verificada de forma atómica. El token solo se acepta una vez; el llamador debe confirmar la transacción antes de considerar verificada la cuenta. El servicio no confirma ni revierte la transacción externa.
+
+Esto aún no ofrece una ruta pública ni entrega de correo. Registro público, correo transaccional, inicio de sesión, sesiones, CSRF, MFA y políticas contra abuso siguen pendientes; no se debe presentar esta primitiva como autenticación disponible.
+
 La prueba de integración PostgreSQL del registro es optativa (`METAGUARD_RUN_POSTGRES_TESTS=1`), solo permite conexiones a loopback y a la base `metaguard_test`, y requiere una instancia descartable. Se verificó el 16 de noviembre de 2026 contra PostgreSQL 16.13 efímero: `alembic upgrade head`, `alembic check` y los 4 casos de `tests/test_postgresql_integration.py` pasaron. No implica verificación de producción ni autoriza apuntar a una base existente.

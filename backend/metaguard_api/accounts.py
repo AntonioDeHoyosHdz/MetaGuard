@@ -1,9 +1,39 @@
 """Private account persistence schema; no registration or authentication endpoints."""
 
-from sqlalchemy import CheckConstraint, String, UniqueConstraint
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    TypeDecorator,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from metaguard_api.database import Base
+
+
+class UTCDateTime(TypeDecorator):
+    """Keep timezone-aware UTC datetimes consistent on SQLite and PostgreSQL."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, _dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.utcoffset() != timedelta(0):
+            raise ValueError("Timestamp must be UTC")
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, _dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class Account(Base):
@@ -17,3 +47,19 @@ class Account(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     email: Mapped[str] = mapped_column(String(254), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class EmailVerificationToken(Base):
+    """One pending verification token per account, stored only as a digest."""
+
+    __tablename__ = "email_verification_tokens"
+    __table_args__ = (
+        CheckConstraint("length(token_digest) = 64", name="ck_email_verification_digest_length"),
+    )
+
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)

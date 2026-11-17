@@ -44,7 +44,8 @@ def test_account_schema_migration() -> None:
             cfg.attributes["connection"] = connection
             command.upgrade(cfg, "head")
             columns = {item["name"] for item in inspect(connection).get_columns("accounts")}
-            assert columns == {"id", "email", "password_hash"}
+            assert columns == {"id", "email", "password_hash", "email_verified_at"}
+            assert "email_verification_tokens" in inspect(connection).get_table_names()
             command.check(cfg)
             command.downgrade(cfg, "0001_reputation_cache")
             assert "accounts" not in inspect(connection).get_table_names()
@@ -166,5 +167,43 @@ def test_system_events_migration_preserves_existing_data() -> None:
             command.downgrade(cfg, "0004_pending_totp")
             assert "system_security_events" not in inspect(connection).get_table_names()
             assert connection.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
+    finally:
+        engine.dispose()
+
+
+def test_email_verification_migration_preserves_legacy_account_data() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0005_system_security_events")
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id,email,password_hash) "
+                    "VALUES ('legacy-1','legacy@example.test','unchanged-hash')"
+                )
+            )
+            command.upgrade(cfg, "head")
+            legacy = connection.execute(
+                text(
+                    "SELECT id,email,password_hash,email_verified_at "
+                    "FROM accounts WHERE id='legacy-1'"
+                )
+            ).one()
+            assert legacy == ("legacy-1", "legacy@example.test", "unchanged-hash", None)
+            columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("email_verification_tokens")
+            }
+            assert columns == {"account_id", "token_digest", "expires_at"}
+            command.check(cfg)
+            command.downgrade(cfg, "0005_system_security_events")
+            assert "email_verification_tokens" not in inspect(connection).get_table_names()
+            assert connection.execute(
+                text("SELECT id,email,password_hash FROM accounts WHERE id='legacy-1'")
+            ).one() == ("legacy-1", "legacy@example.test", "unchanged-hash")
     finally:
         engine.dispose()
