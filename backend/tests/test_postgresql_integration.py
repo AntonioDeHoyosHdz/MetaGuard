@@ -17,6 +17,7 @@ from metaguard_api.database import DatabaseSettings, create_database
 from metaguard_api.email_verification import consume_email_verification, prepare_email_verification
 from metaguard_api.pending_totp import PendingTotp, confirm_totp, stage_totp
 from metaguard_api.registration import RegistrationConflict, register_account
+from metaguard_api.registration_verification import register_account_with_email_verification
 from metaguard_api.totp_verification import consume_totp
 
 pytestmark = pytest.mark.skipif(
@@ -120,6 +121,89 @@ def test_postgres_registration_respects_caller_rollback() -> None:
             with database.transaction() as session:
                 session.execute(delete(Account).where(Account.id == account_id))
         database.close()
+
+
+def test_postgres_registration_verification_composes_and_rolls_back() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy.orm import Session
+
+    database = _create_disposable_database()
+    email = f"{uuid4()}@example.test"
+    password = f"Synthetic PostgreSQL credential {uuid4()}!"
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=30)
+    account_id: str | None = None
+    account_ids: set[str] = set()
+    try:
+        with database.transaction() as session:
+            account, token = register_account_with_email_verification(
+                session,
+                email,
+                password,
+                now=now,
+                expires_at=expires_at,
+                common_passwords=frozenset({"common synthetic password"}),
+                lookup=lambda _prefix, _headers: "0" * 35 + ":0\n",
+                report_outage=lambda _reason: pytest.fail("Unexpected password lookup outage."),
+            )
+            account_id = account.id
+            account_ids.add(account_id)
+            stored = session.get(EmailVerificationToken, account.id)
+            assert stored is not None
+            assert stored.token_digest == sha256(token.encode("ascii")).hexdigest()
+            assert stored.token_digest != token
+            assert stored.expires_at == expires_at
+
+        rolled_back_email = f"{uuid4()}@example.test"
+        with Session(database.engine) as writer:
+            rolled_back_account, rolled_back_token = register_account_with_email_verification(
+                writer,
+                rolled_back_email,
+                f"Synthetic PostgreSQL credential {uuid4()}!",
+                now=now,
+                expires_at=expires_at,
+                common_passwords=frozenset({"common synthetic password"}),
+                lookup=lambda _prefix, _headers: "0" * 35 + ":0\n",
+                report_outage=lambda _reason: pytest.fail("Unexpected password lookup outage."),
+            )
+            rolled_back_account_id = rolled_back_account.id
+            account_ids.add(rolled_back_account_id)
+            writer.flush()
+            stored_rollback_token = writer.get(EmailVerificationToken, rolled_back_account_id)
+            assert stored_rollback_token is not None
+            assert (
+                stored_rollback_token.token_digest
+                == sha256(rolled_back_token.encode("ascii")).hexdigest()
+            )
+            writer.rollback()
+
+        assert rolled_back_token
+        with database.transaction() as observer:
+            assert (
+                observer.scalar(select(Account.id).where(Account.email == rolled_back_email))
+                is None
+            )
+            assert (
+                observer.scalar(
+                    select(EmailVerificationToken.account_id).where(
+                        EmailVerificationToken.account_id == rolled_back_account_id
+                    )
+                )
+                is None
+            )
+    finally:
+        try:
+            if account_ids:
+                with database.transaction() as session:
+                    session.execute(
+                        delete(EmailVerificationToken).where(
+                            EmailVerificationToken.account_id.in_(account_ids)
+                        )
+                    )
+                    session.execute(delete(Account).where(Account.id.in_(account_ids)))
+        finally:
+            database.close()
 
 
 def test_postgres_account_totp_activation_and_replay_race() -> None:

@@ -57,6 +57,8 @@ El correo se acepta únicamente si ya es una identidad en minúsculas de entre 3
 
 Este servicio es un prerrequisito privado, no expone una ruta HTTP y no implementa verificación de correo, recuperación, inicio de sesión, sesiones, JWT, CSRF, MFA ni límites de solicitudes. La integración pública permanece pendiente de resolver esas políticas y protecciones.
 
+`registration_verification.register_account_with_email_verification` compone el registro y la preparación del token dentro de la transacción aportada por el llamador. El llamador entrega `now` y `expires_at`; la función no elige una duración, no envía correo ni confirma la transacción. Devuelve el token sin procesar solo en memoria al llamador y la base conserva únicamente su digest. Si falla el registro o no se puede preparar el token, se propaga una excepción para que el contexto transaccional del llamador revierta ambas escrituras. No abre un savepoint antes de la primera escritura.
+
 ## Verificación de correo: componente interno
 
 La cuenta incluye `email_verified_at`, nullable y en UTC; las cuentas existentes migran como no verificadas sin cambiar su correo ni su hash de contraseña. `email_verification_tokens` conserva como máximo un token pendiente por cuenta y guarda únicamente el digest SHA-256 de un token aleatorio de alta entropía. Preparar uno nuevo invalida el anterior dentro de la transacción del llamador.
