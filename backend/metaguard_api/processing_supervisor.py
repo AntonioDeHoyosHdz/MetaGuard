@@ -5,10 +5,13 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import posixpath
+import re
 import subprocess
 import threading
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import BinaryIO
 
 from metaguard_api.file_processing import (
@@ -21,7 +24,6 @@ from metaguard_api.file_processing import (
 )
 from metaguard_api.processing_worker import MAX_RESPONSE_BYTES
 
-PROCESSOR_IMAGE = "metaguard-processor:local"
 PROCESSOR_TIMEOUT_SECONDS = 60
 CONTAINER_MEMORY = "1g"
 CONTAINER_CPUS = "1.0"
@@ -62,6 +64,45 @@ _REPORT_KEYS = frozenset(
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
+def _absolute_linux_path(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value.isprintable()
+        and value.startswith("/")
+        and not value.startswith("//")
+        and value != "/"
+        and posixpath.normpath(value) == value
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class DockerRuntimeConfig:
+    """Trusted Linux host configuration, never populated from a job request.
+
+    Paths, socket ownership and image provenance must be verified by the host
+    operator; syntax validation alone cannot establish trust.
+    """
+
+    executable: str
+    daemon_socket: str
+    config_dir: str
+    image: str
+
+    def __post_init__(self) -> None:
+        if (
+            not all(
+                _absolute_linux_path(path)
+                for path in (self.executable, self.daemon_socket, self.config_dir)
+            )
+            or not isinstance(self.image, str)
+            or not re.fullmatch(r"(?:[a-z0-9][a-z0-9._:/-]*@)?sha256:[a-f0-9]{64}", self.image)
+        ):
+            raise ValueError("Invalid trusted Docker runtime configuration")
+
+    def environment(self) -> dict[str, str]:
+        return {"DOCKER_HOST": f"unix://{self.daemon_socket}", "DOCKER_CONFIG": self.config_dir}
+
+
 class ProcessingSupervisorError(RuntimeError):
     """Raised when an isolated processing job cannot safely complete."""
 
@@ -83,6 +124,7 @@ class BoundedProcessRunner:
         input: bytes,
         timeout: int,
         max_stdout_bytes: int,
+        env: dict[str, str],
     ) -> subprocess.CompletedProcess[bytes]:
         process = self._process_factory(
             command,
@@ -90,6 +132,7 @@ class BoundedProcessRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             shell=False,
+            env=env,
         )
         if process.stdin is None or process.stdout is None:
             process.kill()
@@ -188,7 +231,10 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 class ProcessingSupervisor:
     """Run exactly one processor request with fixed, non-configurable Docker flags."""
 
-    def __init__(self, runner: Runner | None = None) -> None:
+    def __init__(self, runtime: DockerRuntimeConfig, runner: Runner | None = None) -> None:
+        if not isinstance(runtime, DockerRuntimeConfig):
+            raise ValueError("Trusted Docker runtime configuration is required")
+        self._runtime = runtime
         self._runner = runner or BoundedProcessRunner()
 
     def process(self, data: bytes, content_type: str) -> ProcessedFile:
@@ -207,7 +253,7 @@ class ProcessingSupervisor:
         ).encode("utf-8")
         container_name = f"metaguard-processor-{uuid.uuid4().hex}"
         command = [
-            "docker",
+            self._runtime.executable,
             "run",
             "--pull=never",
             "--interactive",
@@ -224,7 +270,7 @@ class ProcessingSupervisor:
             "--security-opt=no-new-privileges",
             f"--tmpfs=/tmp:rw,noexec,nosuid,nodev,size={CONTAINER_TMPFS_BYTES}",
             "--log-driver=none",
-            PROCESSOR_IMAGE,
+            self._runtime.image,
             "python",
             "-m",
             "metaguard_api.processing_worker",
@@ -240,6 +286,7 @@ class ProcessingSupervisor:
                     input=payload,
                     timeout=PROCESSOR_TIMEOUT_SECONDS,
                     max_stdout_bytes=MAX_OUTPUT_BYTES,
+                    env=self._runtime.environment(),
                 )
             except subprocess.TimeoutExpired as exc:
                 raise ProcessingSupervisorError("Processing timed out") from exc
@@ -257,10 +304,11 @@ class ProcessingSupervisor:
         finally:
             try:
                 cleanup = self._runner(
-                    ["docker", "rm", "--force", container_name],
+                    [self._runtime.executable, "rm", "--force", container_name],
                     input=b"",
                     timeout=10,
                     max_stdout_bytes=4096,
+                    env=self._runtime.environment(),
                 )
             except (OSError, subprocess.TimeoutExpired):
                 cleanup_failed = True

@@ -14,10 +14,20 @@ from metaguard_api.file_processing import ProcessedFile, ProcessingReport
 from metaguard_api.processing_supervisor import (
     MAX_OUTPUT_BYTES,
     BoundedProcessRunner,
+    DockerRuntimeConfig,
     ProcessingSupervisor,
     ProcessingSupervisorError,
     ProcessorOutputLimitExceeded,
 )
+
+
+def _test_runtime() -> DockerRuntimeConfig:
+    return DockerRuntimeConfig(
+        executable="/usr/bin/docker",
+        daemon_socket="/run/docker.sock",
+        config_dir="/etc/metaguard/docker",
+        image="metaguard-processor@sha256:" + "a" * 64,
+    )
 
 
 def _worker_result(data: bytes = b"clean") -> bytes:
@@ -57,14 +67,14 @@ class FakeRunner:
 
 def test_supervisor_uses_fixed_isolated_docker_options_and_returns_result() -> None:
     runner = FakeRunner()
-    supervisor = ProcessingSupervisor(runner=runner)
+    supervisor = ProcessingSupervisor(runtime=_test_runtime(), runner=runner)
 
     result = supervisor.process(b"source", "image/png")
 
     assert isinstance(result, ProcessedFile)
     assert result.cleaned_bytes == b"clean"
     command, options = runner.calls[0]
-    assert command[:2] == ["docker", "run"]
+    assert command[:2] == ["/usr/bin/docker", "run"]
     assert "--network=none" in command
     assert "--read-only" in command
     assert "--user=65532:65532" in command
@@ -83,7 +93,7 @@ def test_supervisor_uses_fixed_isolated_docker_options_and_returns_result() -> N
     assert options["timeout"] == 60
     assert options["max_stdout_bytes"] == MAX_OUTPUT_BYTES
     assert "capture_output" not in options
-    assert runner.calls[-1][0][:3] == ["docker", "rm", "--force"]
+    assert runner.calls[-1][0][:3] == ["/usr/bin/docker", "rm", "--force"]
 
 
 @pytest.mark.parametrize(
@@ -95,7 +105,7 @@ def test_supervisor_rejects_invalid_input_before_starting_container(
 ) -> None:
     runner = FakeRunner()
     with pytest.raises(ProcessingSupervisorError):
-        ProcessingSupervisor(runner=runner).process(data, content_type)
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(data, content_type)
     assert runner.calls == []
 
 
@@ -103,16 +113,16 @@ def test_supervisor_rejects_oversized_or_unverified_worker_output_and_cleans_con
     oversized = subprocess.CompletedProcess([], 0, b"x" * (36 * 1024 * 1024), b"")
     runner = FakeRunner(oversized)
     with pytest.raises(ProcessingSupervisorError):
-        ProcessingSupervisor(runner=runner).process(b"source", "image/png")
-    assert runner.calls[-1][0][:3] == ["docker", "rm", "--force"]
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", "image/png")
+    assert runner.calls[-1][0][:3] == ["/usr/bin/docker", "rm", "--force"]
 
 
 def test_supervisor_cleans_named_container_after_timeout() -> None:
     runner = FakeRunner()
     runner.side_effect = subprocess.TimeoutExpired(["docker", "run"], 60)
     with pytest.raises(ProcessingSupervisorError, match="timed out"):
-        ProcessingSupervisor(runner=runner).process(b"source", "image/png")
-    assert runner.calls[-1][0][:3] == ["docker", "rm", "--force"]
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", "image/png")
+    assert runner.calls[-1][0][:3] == ["/usr/bin/docker", "rm", "--force"]
 
 
 def test_supervisor_reports_cleanup_failure_alongside_timeout() -> None:
@@ -121,7 +131,7 @@ def test_supervisor_reports_cleanup_failure_alongside_timeout() -> None:
     runner.cleanup_returncode = 1
 
     with pytest.raises(ProcessingSupervisorError, match="timed out.*cleanup failed"):
-        ProcessingSupervisor(runner=runner).process(b"source", "image/png")
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", "image/png")
 
 
 def test_supervisor_requires_verified_report() -> None:
@@ -129,7 +139,7 @@ def test_supervisor_requires_verified_report() -> None:
     output["report"]["output_verified"] = False
     runner = FakeRunner(subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b""))
     with pytest.raises(ProcessingSupervisorError):
-        ProcessingSupervisor(runner=runner).process(b"source", "image/png")
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", "image/png")
 
 
 @pytest.mark.parametrize(
@@ -157,7 +167,7 @@ def test_supervisor_rejects_report_values_and_invalid_media_dimensions(
     runner = FakeRunner(subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b""))
 
     with pytest.raises(ProcessingSupervisorError):
-        ProcessingSupervisor(runner=runner).process(b"source", media_type)
+        ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", media_type)
 
 
 class _ChunkStream:
@@ -198,13 +208,16 @@ def test_bounded_runner_stops_collecting_oversized_stdout_and_discards_stderr() 
 
     runner = BoundedProcessRunner(process_factory=process_factory)
     with pytest.raises(ProcessorOutputLimitExceeded):
-        runner(["docker", "run"], input=b"request", timeout=60, max_stdout_bytes=256)
+        runner(
+            ["/usr/bin/docker", "run"], input=b"request", timeout=60, max_stdout_bytes=256, env={}
+        )
 
     assert process.killed is True
     assert process.stdout.read_sizes == [257]
     assert launch_options[0]["stdout"] == subprocess.PIPE
     assert launch_options[0]["stderr"] == subprocess.DEVNULL
     assert launch_options[0]["shell"] is False
+    assert launch_options[0]["env"] == {}
 
 
 def test_docker_context_excludes_secrets_and_key_material() -> None:
