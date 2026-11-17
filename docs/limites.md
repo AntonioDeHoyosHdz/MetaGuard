@@ -9,6 +9,7 @@
 | PDF | Máximo 100 páginas | Limita costo por página; no evita por sí solo PDFs comprimidos/bomba. | APROBADO PARA DEMO; probar |
 | Procesamiento | 60 s de pared por archivo | Falla rápido ante parser colgado; debe acompañarse de CPU/memoria y terminación forzada. | APROBADO PARA DEMO; probar |
 | Worker | 1 vCPU, 1 GiB RAM y 1 trabajo activo por contenedor | Punto de partida conservador para demo; validar con corpus y hardware real. | APROBADO PARA DEMO; probar |
+| Temporal del contenedor | `/tmp` en tmpfs de 64 MiB; sin mounts del host; raíz de solo lectura. | El procesador actual trabaja en memoria; tmpfs queda como espacio efímero acotado, no como almacenamiento de entrada. | IMPLEMENTADO EN CONFIGURACIÓN; verificar en runtime |
 | API general | 60 solicitudes/min/IP y 120/min/cuenta autenticada | Límite inicial para demo, con excepciones por endpoint y cabecera de IP confiable. | APROBADO PARA DEMO; probar |
 | Registro | 5 solicitudes/h/IP | Reduce creación automatizada; medir falsos positivos antes de producción. | APROBADO PARA DEMO; probar |
 | Subida | 3/min/IP y 10/h/cuenta | Reduce presión del worker; agregar cuota concurrente después de medir. | APROBADO PARA DEMO; probar |
@@ -18,7 +19,7 @@
 
 1. Medir p95 de procesamiento del corpus en el equipo de demo y aumentar solo con justificación.
 2. Probar imágenes expandibles/PDF bomba dentro de los límites de CPU/RAM/tiempo.
-3. Confirmar límites de almacenamiento temporal, concurrencia, cuotas de usuario y proxy.
+3. Confirmar límites de almacenamiento temporal, concurrencia, cuotas de usuario y proxy. La configuración del supervisor incluye `--network=none`, `--read-only`, usuario 65532, `--cap-drop=ALL`, `no-new-privileges`, 1 GiB/1 vCPU, 64 PIDs, 60 s y tmpfs de 64 MiB; la ejecución e imagen construida todavía no se verificaron.
 4. Revisar límites junto con Nginx y API para que no se contradigan.
 
 ## Qué pasa si falta

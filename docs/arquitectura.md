@@ -45,11 +45,11 @@ flowchart LR
 | Navegador | Interfaz y carga. Archivo, URL, nombre y cabeceras del cliente son datos no confiables. |
 | Nginx | TLS, límite de cuerpo y tasa. Descarta cabeceras IP aportadas por el cliente y establece una IP de origen confiable según la topología desplegada. |
 | API | Autenticación, CSRF, autorización por objeto, validación de solicitud, SHA-256 sin interpretar el archivo, persistencia cifrada y coordinación. No parsea el formato. |
-| Procesador | Valida tipo real y dimensiones; limpia/verifica en sandbox sin red, sin privilegios y con FS de solo lectura. Ve el archivo en claro mientras lo procesa. |
+| Procesador | `ProcessingSupervisor` fija imagen, comando y opciones Docker; entrega solo bytes y MIME mediante stdin al worker privado. El worker reutiliza `process_file`; el contenedor corre sin red ni privilegios, con raíz de solo lectura y límites de recursos. Ve el archivo en claro mientras lo procesa. |
 | PostgreSQL | Usuarios, reportes, eventos y caché con sus retenciones. No debe recibir archivos binarios ni valores sensibles en claro cuando la propuesta exige cifrado por campo. |
 | Servicios externos | HIBP recibe solo prefijo SHA-1 y padding; VirusTotal recibe hashes SHA-256 únicamente con consentimiento por archivo; SMTP no recibe archivos. |
 
-La propuesta define al operador como confiable, pero no como incapaz de ver el archivo: el servidor lo procesa en claro durante unos segundos. El transporte API–procesador, la fuente de llaves, la topología exacta y los valores de recursos del contenedor siguen **PENDIENTES** de diseño/decisión. El procesador no debe tener ruta de red hacia la API ni Internet; el IPC local debe respetar esa propiedad.
+La propuesta define al operador como confiable, pero no como incapaz de ver el archivo: el servidor lo procesa en claro durante unos segundos. El contrato privado supervisor–worker ya limita el mensaje a bytes y MIME, pero su cableado con API, el transporte API–procesador y la fuente de llaves siguen **PENDIENTES**. El procesador no debe tener ruta de red hacia la API ni Internet; el IPC local debe respetar esa propiedad.
 
 ## Qué pasa si falta
 
@@ -57,4 +57,4 @@ Sin límites de confianza y separación comprobable, un archivo hostil podría a
 
 ## Verificación planificada
 
-Inspección de `docker compose config` y del namespace de red; prueba de que el worker no resuelve ni conecta a destinos externos; captura de flujo y prueba de que la API no interpreta bytes del archivo. **Todo pendiente de implementación y ejecución.**
+El código configura `--network=none`, `--read-only`, usuario no-root, capacidades vacías, `no-new-privileges`, 1 GiB/1 vCPU, 60 s, 64 MiB de `/tmp` y limpieza por nombre de contenedor. La ejecución de Docker, el comportamiento de la imagen construida y la verificación efectiva del aislamiento siguen **PENDIENTES**; esta unidad no conecta la API ni demuestra el despliegue.
