@@ -13,6 +13,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 
 _MAX_RESPONSE_BYTES = 2_000_000
 _RANGE_URL = "https://api.pwnedpasswords.com/range/"
+_MAX_CHUNK_LINE_BYTES = 8192
 
 
 class InvalidRangeResponse(ValueError):
@@ -26,6 +27,42 @@ class RangeServiceUnavailable(RuntimeError):
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _read_chunked_response(response) -> bytes:
+    """Read chunked framing strictly, including the terminating trailer line."""
+    stream = response.fp
+    if stream is None:
+        raise InvalidRangeResponse("Missing chunked response stream")
+    result = bytearray()
+    while True:
+        line = stream.readline(_MAX_CHUNK_LINE_BYTES + 1)
+        if (
+            len(line) > _MAX_CHUNK_LINE_BYTES
+            or not line.endswith(b"\r\n")
+            or not re.fullmatch(rb"[0-9A-Fa-f]{1,16}(?:;[\x20-\x7e]*)?\r\n", line)
+        ):
+            raise InvalidRangeResponse("Invalid password range chunk header")
+        size = int(line.split(b";", 1)[0].strip(), 16)
+        if size > _MAX_RESPONSE_BYTES - len(result):
+            raise InvalidRangeResponse("Password range response exceeds limit")
+        if size == 0:
+            trailer_bytes = 0
+            while True:
+                trailer = stream.readline(_MAX_CHUNK_LINE_BYTES + 1)
+                trailer_bytes += len(trailer)
+                if trailer == b"\r\n":
+                    return bytes(result)
+                if (
+                    len(trailer) > _MAX_CHUNK_LINE_BYTES
+                    or trailer_bytes > _MAX_RESPONSE_BYTES
+                    or not re.fullmatch(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+:[\t\x20-\x7e]*\r\n", trailer)
+                ):
+                    raise InvalidRangeResponse("Invalid password range chunk trailer")
+        chunk = stream.read(size + 2)
+        if len(chunk) != size + 2 or chunk[-2:] != b"\r\n":
+            raise InvalidRangeResponse("Incomplete password range chunk")
+        result.extend(chunk[:-2])
 
 
 def fetch_password_range(prefix: str, headers: dict[str, str]) -> str:
@@ -43,13 +80,20 @@ def fetch_password_range(prefix: str, headers: dict[str, str]) -> str:
             if response.status != 200:
                 raise RangeServiceUnavailable("Password range service unavailable")
             if response.length is None and not response.chunked:
-                raise RangeServiceUnavailable("Unframed password range response")
-            body = response.read(_MAX_RESPONSE_BYTES + 1)
+                raise InvalidRangeResponse("Unframed password range response")
+            try:
+                body = (
+                    _read_chunked_response(response)
+                    if response.chunked is True
+                    else response.read(_MAX_RESPONSE_BYTES + 1)
+                )
+            except (HTTPException, OSError):
+                raise InvalidRangeResponse("Incomplete password range response") from None
             remaining = getattr(response, "length", None)
             if isinstance(remaining, int) and remaining > 0:
-                raise RangeServiceUnavailable("Incomplete password range response")
+                raise InvalidRangeResponse("Incomplete password range response")
         if len(body) > _MAX_RESPONSE_BYTES:
-            raise RangeServiceUnavailable("Password range response exceeds limit")
+            raise InvalidRangeResponse("Password range response exceeds limit")
         try:
             return body.decode("ascii")
         except UnicodeError:

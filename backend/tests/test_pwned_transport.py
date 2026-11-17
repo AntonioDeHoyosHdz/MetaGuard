@@ -1,5 +1,5 @@
 from hashlib import sha1
-from http.client import BadStatusLine, HTTPResponse
+from http.client import BadStatusLine, HTTPResponse, IncompleteRead
 from io import BytesIO
 from unittest.mock import MagicMock
 from urllib.error import URLError
@@ -7,6 +7,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler
 
 import pytest
 
+from metaguard_api.password_policy import PasswordScreeningResult, screen_password
 from metaguard_api.pwned_passwords import (
     InvalidRangeResponse,
     RangeServiceUnavailable,
@@ -71,7 +72,7 @@ def test_transport_disables_proxies_and_redirects(monkeypatch) -> None:
 @pytest.mark.parametrize(
     "body,status,error",
     [
-        (b"x" * 2_000_001, 200, RangeServiceUnavailable),
+        (b"x" * 2_000_001, 200, InvalidRangeResponse),
         (b"ok", 503, RangeServiceUnavailable),
         (b"\xff", 200, InvalidRangeResponse),
     ],
@@ -108,7 +109,7 @@ def test_truncated_http_body_is_not_a_safe_result(monkeypatch) -> None:
     opener = MagicMock()
     opener.open.return_value = response
     monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
-    with pytest.raises(RangeServiceUnavailable):
+    with pytest.raises(InvalidRangeResponse):
         is_compromised("synthetic-password", fetch_password_range)
 
 
@@ -122,6 +123,76 @@ def test_http_protocol_errors_are_sanitized(monkeypatch) -> None:
     assert error.value.__suppress_context__
 
 
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "truncated",
+        "unframed",
+        "oversized",
+        "incomplete_read",
+        "body_timeout",
+        "long_chunk",
+        "long_trailer",
+        "missing_trailer",
+    ],
+)
+def test_unverifiable_body_cannot_trigger_reduced_acceptance(monkeypatch, kind):
+    password = "synthetic password for testing"
+    suffix = sha1(password.encode(), usedforsecurity=False).hexdigest().upper()[5:]
+    body = f"{suffix}:1\r\n".encode()
+    if kind == "truncated":
+        wire = f"HTTP/1.1 200 OK\r\nContent-Length: {len(body) + 10}\r\n\r\n".encode() + body
+    elif kind == "unframed":
+        wire = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n" + body
+    elif kind == "long_chunk":
+        wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + b"a" * 65537 + b"\r\n"
+    elif kind == "long_trailer":
+        wire = (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+            + b"a" * 65537
+            + b"\r\n\r\n"
+        )
+    elif kind == "missing_trailer":
+        safe_body = b"F" * 35 + b":0\r\n"
+        wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+        wire += f"{len(safe_body):x}\r\n".encode() + safe_body + b"\r\n0\r\n"
+    else:
+        wire = b""
+
+    opener = MagicMock()
+    if wire:
+
+        class Socket:
+            def makefile(self, *_args, **_kwargs):
+                return BytesIO(wire)
+
+        response = HTTPResponse(Socket())
+        response.begin()
+        opener.open.return_value = response
+    else:
+        response = MagicMock(status=200, length=2_000_001, chunked=False)
+        if kind == "oversized":
+            response.read.return_value = b"x" * 2_000_001
+            response.length = 0
+        elif kind == "incomplete_read":
+            response.read.side_effect = IncompleteRead(b"sensitive partial response")
+        else:
+            response.read.side_effect = TimeoutError("sensitive partial response")
+        opener.open.return_value.__enter__.return_value = response
+    monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
+    events = []
+    assert (
+        screen_password(
+            password,
+            common_passwords=frozenset({"other common password"}),
+            lookup=fetch_password_range,
+            report_outage=events.append,
+        )
+        is PasswordScreeningResult.REJECTED
+    )
+    assert events == ["password_breach_check_unavailable"]
+
+
 def test_unframed_http_body_is_rejected(monkeypatch) -> None:
     class FakeSocket:
         def makefile(self, *_args, **_kwargs):
@@ -132,7 +203,7 @@ def test_unframed_http_body_is_rejected(monkeypatch) -> None:
     opener = MagicMock()
     opener.open.return_value = response
     monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
-    with pytest.raises(RangeServiceUnavailable):
+    with pytest.raises(InvalidRangeResponse):
         fetch_password_range("ABCDE", {"Add-Padding": "true"})
 
 
@@ -157,3 +228,23 @@ def test_complete_framed_response_is_accepted(monkeypatch, chunked) -> None:
     opener.open.return_value = response
     monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
     assert is_compromised(password, fetch_password_range) is True
+
+
+def test_complete_chunk_extensions_and_trailers_are_accepted(monkeypatch) -> None:
+    password = "synthetic-password"
+    suffix = sha1(password.encode(), usedforsecurity=False).hexdigest().upper()[5:]
+    body = f"{suffix}:2\r\n".encode()
+    wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+    wire += f"{len(body):x};example=value\r\n".encode() + body
+    wire += b"\r\n0\r\nX-Test: accepted\r\n\r\n"
+
+    class Socket:
+        def makefile(self, *_args, **_kwargs):
+            return BytesIO(wire)
+
+    response = HTTPResponse(Socket())
+    response.begin()
+    opener = MagicMock()
+    opener.open.return_value = response
+    monkeypatch.setattr("metaguard_api.pwned_passwords.build_opener", lambda *_args: opener)
+    assert is_compromised(password, fetch_password_range)
