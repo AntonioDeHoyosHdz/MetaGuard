@@ -16,11 +16,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from metaguard_api.account_credentials import is_approved_password_hash
+from metaguard_api.email_verification import consume_email_verification
 from metaguard_api.first_factor import (
     FirstFactorStatus,
     InvalidDummyPasswordHash,
     check_first_factor,
 )
+from metaguard_api.registration import (
+    InvalidRegistrationInput,
+    RegistrationConflict,
+)
+from metaguard_api.registration_verification import register_account_with_email_verification
 from metaguard_api.second_factor import check_second_factor
 from metaguard_api.sessions import (
     consume_mfa_login_challenge,
@@ -49,6 +55,12 @@ class SessionFactory(Protocol):
     def begin(self) -> AbstractContextManager[Session]: ...
 
 
+class EmailSender(Protocol):
+    """Injected delivery boundary; verification tokens are passed only here."""
+
+    def send_verification(self, email: str, token: str) -> None: ...
+
+
 class _RejectAuthentication(Exception):
     """Rollback a provisional MFA-step update before returning a generic denial."""
 
@@ -68,6 +80,15 @@ class AuthRuntime:
     session_lifetime: timedelta
     mfa_challenge_lifetime: timedelta
     now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
+    common_passwords: frozenset[str] | None = field(default=None, repr=False, compare=False)
+    password_lookup: Callable[[str, dict[str, str]], str] | None = field(
+        default=None, repr=False, compare=False
+    )
+    report_password_outage: Callable[[str], None] | None = field(
+        default=None, repr=False, compare=False
+    )
+    email_sender: EmailSender | None = field(default=None, repr=False, compare=False)
+    email_verification_lifetime: timedelta | None = None
 
 
 class LoginRequest(BaseModel):
@@ -83,6 +104,19 @@ class MfaLoginRequest(BaseModel):
     email: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=1024)
     code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+
+
+class RegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class EmailVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=128)
 
 
 def _error(status: int, code: str, message: str):
@@ -117,6 +151,20 @@ def _runtime_ready(runtime: AuthRuntime | None) -> bool:
         and runtime.rate_limiter is not None
         and callable(getattr(runtime.rate_limiter, "allow", None))
         and callable(runtime.now)
+    )
+
+
+def _registration_runtime_ready(runtime: AuthRuntime | None) -> bool:
+    return (
+        _runtime_ready(runtime)
+        and isinstance(runtime.common_passwords, frozenset)
+        and bool(runtime.common_passwords)
+        and all(isinstance(value, str) and value for value in runtime.common_passwords)
+        and callable(runtime.password_lookup)
+        and callable(runtime.report_password_outage)
+        and callable(getattr(runtime.email_sender, "send_verification", None))
+        and isinstance(runtime.email_verification_lifetime, timedelta)
+        and runtime.email_verification_lifetime.total_seconds() >= 1
     )
 
 
@@ -276,6 +324,66 @@ def _set_session_cookies(
 
 def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRouter:
     router = APIRouter(prefix="/v1/auth", tags=["auth"])
+
+    @router.post("/register")
+    def register(payload: RegistrationRequest, request: Request):
+        if not _registration_runtime_ready(runtime):
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not _origin_and_csrf_valid(request, settings):
+            return _error(403, "origin_or_csrf", "Origin or CSRF validation failed")
+        allowed = _allow(runtime, request, "auth_register", payload.email)
+        if allowed is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests")
+        now = _current_time(runtime)
+        if now is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        email = payload.email.strip().lower()
+        try:
+            with runtime.session_factory.begin() as session:
+                _, token = register_account_with_email_verification(
+                    session,
+                    email,
+                    payload.password,
+                    common_passwords=runtime.common_passwords,
+                    lookup=runtime.password_lookup,
+                    report_outage=runtime.report_password_outage,
+                    now=now,
+                    expires_at=now + runtime.email_verification_lifetime,
+                )
+                runtime.email_sender.send_verification(email, token)
+            return JSONResponse(
+                {"registered": True}, status_code=202, headers={"Cache-Control": "no-store"}
+            )
+        except RegistrationConflict:
+            return _error(409, "registration_unavailable", "Registration could not be completed")
+        except InvalidRegistrationInput:
+            return _error(400, "invalid_registration", "Registration could not be completed")
+        except Exception:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+
+    @router.post("/verify-email")
+    def verify_email(payload: EmailVerificationRequest, request: Request):
+        if not _runtime_ready(runtime):
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not _origin_and_csrf_valid(request, settings):
+            return _error(403, "origin_or_csrf", "Origin or CSRF validation failed")
+        allowed = _allow(runtime, request, "auth_verify_email", "anonymous")
+        if allowed is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests")
+        now = _current_time(runtime)
+        if now is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        try:
+            with runtime.session_factory.begin() as session:
+                if not consume_email_verification(session, payload.token, now=now):
+                    return _error(400, "invalid_verification", "Verification token is invalid")
+            return JSONResponse({"verified": True}, headers={"Cache-Control": "no-store"})
+        except Exception:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
 
     @router.get("/status")
     def auth_status(request: Request):

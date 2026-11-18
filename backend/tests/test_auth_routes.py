@@ -533,3 +533,137 @@ def test_session_issue_failure_rolls_back_challenge_and_totp_consumption(auth_en
         assert stored_digests.csrf_digest == sha256(csrf.encode("ascii")).hexdigest()
         assert challenge not in repr(stored_digests)
         assert csrf not in repr(stored_digests)
+
+
+class FakeEmailSender:
+    def __init__(self):
+        self.deliveries = []
+
+    def send_verification(self, email, token):
+        self.deliveries.append((email, token))
+
+
+def make_registration_client(auth_env, *, email_sender=None, rate_limiter=None):
+    from metaguard_api.auth_routes import AuthRuntime
+
+    runtime_values = make_runtime(auth_env, rate_limiter=rate_limiter)
+    runtime_values.update(
+        common_passwords=frozenset({"password"}),
+        password_lookup=lambda _prefix, _headers: "00000000000000000000000000000000000:0",
+        report_password_outage=lambda _event: None,
+        email_sender=email_sender or FakeEmailSender(),
+        email_verification_lifetime=timedelta(hours=1),
+    )
+    runtime = AuthRuntime(**runtime_values)
+    app = create_app(
+        Settings(environment="test", auth_allowed_origins=(ORIGIN,)),
+        auth_runtime=runtime,
+    )
+    return TestClient(app, base_url="https://api.example"), runtime
+
+
+def test_registration_and_email_verification_keep_token_out_of_responses(auth_env):
+    sender = FakeEmailSender()
+    client, runtime = make_registration_client(auth_env, email_sender=sender)
+    csrf = preauth(client)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf}
+    email = "new-user@example.test"
+    password = "a sufficiently long synthetic password"
+
+    registered = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": password},
+        headers=headers,
+    )
+    assert registered.status_code == 202
+    assert registered.json() == {"registered": True}
+    assert len(sender.deliveries) == 1
+    assert sender.deliveries[0][0] == email
+    token = sender.deliveries[0][1]
+    assert token not in registered.text
+
+    with auth_env["factory"]() as session:
+        account = session.scalar(select(Account).where(Account.email == email))
+        assert account is not None
+        assert account.email_verified_at is None
+        stored = session.execute(
+            text("SELECT token_digest FROM email_verification_tokens WHERE account_id=:id"),
+            {"id": account.id},
+        ).scalar_one()
+        assert stored == sha256(token.encode("ascii")).hexdigest()
+        assert token not in stored
+
+    verified = client.post("/v1/auth/verify-email", json={"token": token}, headers=headers)
+    assert verified.status_code == 200
+    assert verified.json() == {"verified": True}
+    assert token not in verified.text
+    assert runtime.rate_limiter.calls[-1][0] == "auth_verify_email"
+    with auth_env["factory"]() as session:
+        account = session.scalar(select(Account).where(Account.email == email))
+        assert account is not None and account.email_verified_at is not None
+        assert (
+            session.execute(text("SELECT count(*) FROM email_verification_tokens")).scalar_one()
+            == 0
+        )
+
+
+def test_registration_fails_closed_when_screening_or_sender_is_missing(auth_env):
+    client, _ = make_client(auth_env)
+    csrf = preauth(client)
+    response = client.post(
+        "/v1/auth/register",
+        json={"email": "no-provider@example.test", "password": "a sufficiently long password"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 503
+    assert "no-provider@example.test" not in response.text
+
+
+class FailingEmailSender:
+    def send_verification(self, email, token):
+        raise RuntimeError(f"synthetic mail failure for {email}: {token}")
+
+
+def test_registration_mail_failure_rolls_back_account_and_token(auth_env):
+    client, _ = make_registration_client(auth_env, email_sender=FailingEmailSender())
+    csrf = preauth(client)
+    email = "mail-failure@example.test"
+    response = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "another sufficiently long password"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 503
+    assert email not in response.text
+    assert "synthetic mail failure" not in response.text
+    with auth_env["factory"]() as session:
+        assert session.scalar(select(Account.id).where(Account.email == email)) is None
+        assert (
+            session.execute(text("SELECT count(*) FROM email_verification_tokens")).scalar_one()
+            == 0
+        )
+
+
+def test_registration_and_verification_share_exact_origin_csrf_and_rate_limit(auth_env):
+    client, runtime = make_registration_client(auth_env)
+    csrf = preauth(client)
+    denied = client.post(
+        "/v1/auth/register",
+        json={"email": "denied@example.test", "password": "another sufficiently long password"},
+        headers={"Origin": "https://evil.example", "X-CSRF-Token": csrf},
+    )
+    assert denied.status_code == 403
+    assert [call[0] for call in runtime.rate_limiter.calls] == ["auth_status"]
+
+    limited_client, limited_runtime = make_registration_client(
+        auth_env, rate_limiter=FakeRateLimiter(allowed=False)
+    )
+    limited_csrf = "A" * 43
+    limited_client.cookies.set("__Host-metaguard_csrf", limited_csrf)
+    limited = limited_client.post(
+        "/v1/auth/register",
+        json={"email": "limited@example.test", "password": "another sufficiently long password"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": limited_csrf},
+    )
+    assert limited.status_code == 429
+    assert [call[0] for call in limited_runtime.rate_limiter.calls] == ["auth_register"]
