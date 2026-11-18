@@ -1,4 +1,4 @@
-"""Private opaque session primitives; no HTTP routes or cookie policy."""
+"""Private JWT session primitives; no HTTP routes or cookie policy."""
 
 import hmac
 import secrets
@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import uuid4
 
+import jwt
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from metaguard_api.accounts import Account, AccountSession
 
 _TOKEN_LENGTH = 43
 _TOKEN_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+_REQUIRED_CLAIMS = ["iss", "aud", "iat", "exp", "sub", "jti"]
 
 
 @dataclass(frozen=True)
@@ -42,23 +44,85 @@ def _utc_datetime(value: datetime) -> datetime | None:
 
 
 def _token_digest(token: str) -> str | None:
+    if not isinstance(token, str) or not 1 <= len(token) <= 8192:
+        return None
+    try:
+        return sha256(token.encode("ascii")).hexdigest()
+    except UnicodeEncodeError:
+        return None
+
+
+def _valid_configuration(signing_key: str, issuer: str, audience: str) -> bool:
+    return (
+        isinstance(signing_key, str)
+        and bool(signing_key)
+        and isinstance(issuer, str)
+        and bool(issuer)
+        and isinstance(audience, str)
+        and bool(audience)
+    )
+
+
+def _decode_claims(
+    token: str,
+    *,
+    signing_key: str,
+    issuer: str,
+    audience: str,
+    now: datetime,
+) -> dict | None:
+    if not _valid_configuration(signing_key, issuer, audience):
+        return None
+    current_time = _utc_datetime(now)
+    if current_time is None or _token_digest(token) is None:
+        return None
+
+    try:
+        claims = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["HS256"],
+            issuer=issuer,
+            audience=audience,
+            options={"require": _REQUIRED_CLAIMS, "verify_exp": False, "verify_iat": False},
+        )
+    except (jwt.InvalidTokenError, TypeError, ValueError, OverflowError):
+        return None
+
+    issued_at = claims.get("iat")
+    expires_at = claims.get("exp")
     if (
-        not isinstance(token, str)
-        or len(token) != _TOKEN_LENGTH
-        or any(character not in _TOKEN_ALPHABET for character in token)
+        isinstance(issued_at, bool)
+        or not isinstance(issued_at, (int, float))
+        or isinstance(expires_at, bool)
+        or not isinstance(expires_at, (int, float))
+        or not isinstance(claims.get("sub"), str)
+        or not claims["sub"]
+        or not isinstance(claims.get("jti"), str)
+        or not claims["jti"]
     ):
         return None
-    return sha256(token.encode("ascii")).hexdigest()
+    try:
+        issued_time = datetime.fromtimestamp(issued_at, UTC)
+        expiration = datetime.fromtimestamp(expires_at, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+    if issued_time > current_time or expiration <= current_time or expiration <= issued_time:
+        return None
+    return claims
 
 
 def issue_session(
     session: Session,
     account_id: str,
     *,
+    signing_key: str,
+    issuer: str,
+    audience: str,
     now: datetime,
     expires_at: datetime,
 ) -> IssuedSession | None:
-    """Prepare a session after authentication; the caller supplies expiry and transaction."""
+    """Prepare a signed JWT session; the caller supplies policy and transaction."""
     current_time = _utc_datetime(now)
     expiration = _utc_datetime(expires_at)
     if (
@@ -67,6 +131,7 @@ def issue_session(
         or current_time is None
         or expiration is None
         or expiration <= current_time
+        or not _valid_configuration(signing_key, issuer, audience)
     ):
         return None
 
@@ -79,11 +144,23 @@ def issue_session(
     if verified_account_id is None:
         return None
 
-    session_token = secrets.token_urlsafe(32)
+    session_id = str(uuid4())
+    session_token = jwt.encode(
+        {
+            "iss": issuer,
+            "aud": audience,
+            "iat": current_time.timestamp(),
+            "exp": expiration.timestamp(),
+            "sub": account_id,
+            "jti": session_id,
+        },
+        signing_key,
+        algorithm="HS256",
+    )
     csrf_token = secrets.token_urlsafe(32)
     session.add(
         AccountSession(
-            id=str(uuid4()),
+            id=session_id,
             account_id=account_id,
             token_digest=sha256(session_token.encode("ascii")).hexdigest(),
             csrf_digest=sha256(csrf_token.encode("ascii")).hexdigest(),
@@ -98,16 +175,28 @@ def get_active_session(
     session: Session,
     session_token: str,
     *,
+    signing_key: str,
+    issuer: str,
+    audience: str,
     now: datetime,
 ) -> ActiveSession | None:
-    """Return an unexpired, unrevoked identity without exposing the token digest."""
-    current_time = _utc_datetime(now)
+    """Verify fixed-algorithm JWT claims and require a live, unrevoked DB row."""
+    claims = _decode_claims(
+        session_token,
+        signing_key=signing_key,
+        issuer=issuer,
+        audience=audience,
+        now=now,
+    )
     token_digest = _token_digest(session_token)
-    if current_time is None or token_digest is None:
+    current_time = _utc_datetime(now)
+    if claims is None or token_digest is None or current_time is None:
         return None
 
     stored = session.execute(
         select(AccountSession).where(
+            AccountSession.id == claims["jti"],
+            AccountSession.account_id == claims["sub"],
             AccountSession.token_digest == token_digest,
             AccountSession.expires_at > current_time,
             AccountSession.revoked_at.is_(None),
@@ -132,16 +221,33 @@ def verify_csrf_token(active_session: ActiveSession | None, csrf_token: str) -> 
     return candidate_digest is not None and hmac.compare_digest(expected_digest, candidate_digest)
 
 
-def revoke_session(session: Session, session_token: str, *, now: datetime) -> bool:
-    """Revoke one active session atomically; the caller owns commit or rollback."""
+def revoke_session(
+    session: Session,
+    session_token: str,
+    *,
+    signing_key: str,
+    issuer: str,
+    audience: str,
+    now: datetime,
+) -> bool:
+    """Conditionally revoke a valid JWT; the caller owns commit or rollback."""
+    claims = _decode_claims(
+        session_token,
+        signing_key=signing_key,
+        issuer=issuer,
+        audience=audience,
+        now=now,
+    )
     current_time = _utc_datetime(now)
     token_digest = _token_digest(session_token)
-    if current_time is None or token_digest is None:
+    if claims is None or current_time is None or token_digest is None:
         return False
 
     revoked_id = session.execute(
         update(AccountSession)
         .where(
+            AccountSession.id == claims["jti"],
+            AccountSession.account_id == claims["sub"],
             AccountSession.token_digest == token_digest,
             AccountSession.expires_at > current_time,
             AccountSession.revoked_at.is_(None),

@@ -4,6 +4,8 @@ La composición interna de contraseña y TOTP requiere una sesión sin cambios O
 
 **Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; las sondas `/health/live` y `/health/ready` están implementadas. Las 18 rutas funcionales no están implementadas. El OpenAPI actual no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
 
+La primitiva privada de sesión emite JWT HS256 con llave, issuer, audience, `now` UTC y vencimiento suministrados por el llamador. Solo persiste digests SHA-256 del JWT y del token CSRF independiente; no se exponen aún rutas ni cookies. Cada validación consulta la fila de sesión para detectar revocación, por lo que el logout confirmado invalida de inmediato validaciones posteriores al commit, a cambio de una lectura de base por solicitud. Una solicitud que ya fue autorizada antes de un logout concurrente puede terminar. El detalle de este compromiso está en `docs/sesiones-opacas.md`.
+
 ## Rutas
 
 Las tasas generales, de registro, de carga y el bloqueo progresivo documentados en `docs/limites.md` fueron aprobados solo para demo; aún requieren pruebas y no se consideran producción. Los límites adicionales por endpoint de esta tabla son candidatos pendientes de aprobación. Mutaciones con cookie JWT requieren protección CSRF. La API debe aplicar autorización por objeto a cada `user_id`/recurso.

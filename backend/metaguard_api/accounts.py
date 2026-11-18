@@ -67,7 +67,7 @@ class EmailVerificationToken(Base):
 
 
 class AccountSession(Base):
-    """Opaque authenticated session; only token digests are persisted."""
+    """JWT session revocation record; only token and CSRF digests are persisted."""
 
     __tablename__ = "account_sessions"
     __table_args__ = (
