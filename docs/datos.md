@@ -1,12 +1,12 @@
 # Datos tratados y retenidos
 
-**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** requisitos propuestos; solo existe una implementación parcial de la caché de reputación, sin conexión al proveedor ni purga programada.
+**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** requisitos propuestos; hay implementación parcial de la caché de reputación y una primitiva privada de archivo temporal cifrado en memoria, pero no existe flujo de carga/descarga ni runtime conectado. No se ha configurado una llave productiva ni se ha demostrado retención/purga del producto.
 
 ## Inventario de datos
 
 | Entidad/dato | Finalidad | Retención U2 | Protección U2 | Pendiente / riesgo |
 |---|---|---|---|---|
-| Archivo original + copia limpia | Procesar y permitir descarga | Máximo 10 min; borrar al descargar o expirar | Memoria/temporal en memoria, AES-256-GCM, token de un uso | Método IPC y evidencia de purga. |
+| Archivo original + copia limpia | Procesar y permitir descarga | Requisito propuesto: máximo 10 min; borrar al descargar o expirar | Solo existe una primitiva privada que guarda payload cifrado AES-256-GCM en memoria, recibe llave de 32 bytes y hora UTC del llamador, liga AAD a file/owner IDs, limita bytes y expone borrado por owner/purga-expirada | Sin rutas/API, clave productiva, persistencia, evidencia de runtime/purga, borrado al descargar ni garantía de borrado físico de memoria. No declarar comportamiento de usuario o retención real. |
 | Reporte | Mostrar antes/después | 24 h o borrado manual | Valores sensibles (GPS, serie, autor) cifrados por campo AES-256-GCM | Inventario de cada campo sensible. |
 | Eventos de seguridad, incluida IP | Monitoreo/alertas | 30 días | Cada usuario accede solo a los propios | Campos exactos, acceso operador y purga. |
 | Hash de contraseña | Autenticación | Mientras exista la cuenta | Argon2id; nunca texto claro | Parámetros Argon2id se decidirán en implementación. |
