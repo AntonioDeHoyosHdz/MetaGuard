@@ -3,9 +3,14 @@
 from typing import Literal
 
 from fastapi import FastAPI, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from metaguard_api.auth_routes import AuthRuntime, create_auth_router
 from metaguard_api.database import DatabaseSettings, create_database
 from metaguard_api.settings import Settings
 
@@ -18,7 +23,9 @@ class ReadyStatus(BaseModel):
     status: Literal["ok", "unavailable"]
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, auth_runtime: AuthRuntime | None = None
+) -> FastAPI:
     """Create the API without connecting to external services at import time."""
     app_settings = settings or Settings()
     docs_enabled = app_settings.environment != "production"
@@ -31,6 +38,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = app_settings
+    app.state.auth_runtime = auth_runtime
+    app.include_router(create_auth_router(app_settings, auth_runtime))
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(app_settings.auth_allowed_origins),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
+        max_age=600,
+    )
+
+    @app.middleware("http")
+    async def disable_auth_caching(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/v1/auth/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.exception_handler(RequestValidationError)
+    async def redact_auth_validation_errors(request, error):
+        if request.url.path.startswith("/v1/auth/"):
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"code": "invalid_request", "message": "Invalid request"}},
+                headers={"Cache-Control": "no-store"},
+            )
+        return await request_validation_exception_handler(request, error)
 
     @app.get(
         "/health/live",

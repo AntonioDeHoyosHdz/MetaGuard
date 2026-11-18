@@ -2,9 +2,9 @@
 
 La composición interna de contraseña y TOTP requiere una sesión sin cambios ORM pendientes y devuelve un identificador provisional únicamente después de verificar ambos factores. El llamador debe confirmar la transacción antes de conceder acceso. Esta función privada no crea sesiones ni implementa una ruta, CSRF, límites de intentos o recuperación; su comportamiento concurrente aún requiere pruebas con PostgreSQL real.
 
-**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; las sondas `/health/live` y `/health/ready` están implementadas. Las 18 rutas funcionales no están implementadas. El OpenAPI actual no equivale a este contrato completo. JSON salvo cuerpo binario de subida/descarga.
+**Propósito:** fijar rutas/controles para OBJ-02. **Estado:** contrato inicial; las sondas `/health/live` y `/health/ready` y las cuatro rutas de auth están implementadas, pero auth responde `503` si el llamador no inyecta base de datos, llaves y rate limiter. Las otras 14 rutas funcionales no están implementadas. Esto no declara preparación para producción; el OpenAPI actual no equivale al contrato completo. JSON salvo cuerpo binario de subida/descarga.
 
-La primitiva privada de sesión emite JWT HS256 con llave, issuer, audience, `now` UTC y vencimiento suministrados por el llamador. La llave debe ser criptográficamente aleatoria y tener al menos 32 bytes UTF-8; el llamador confiable debe provisionarla. Solo persiste digests SHA-256 del JWT y del token CSRF independiente; no se exponen aún rutas ni cookies. Cada validación consulta la fila de sesión para detectar revocación, por lo que el logout confirmado invalida de inmediato validaciones posteriores al commit, a cambio de una lectura de base por solicitud. Una solicitud que ya fue autorizada antes de un logout concurrente puede terminar. El detalle de este compromiso está en `docs/sesiones-opacas.md`.
+La primitiva privada de sesión emite JWT HS256 con llave, issuer, audience, `now` UTC y vencimiento suministrados por el llamador. La llave debe ser criptográficamente aleatoria y tener al menos 32 bytes UTF-8; el llamador confiable debe provisionarla. Solo persiste digests SHA-256 del JWT y del token CSRF independiente. Las rutas de auth usan cookies host-only `HttpOnly` y `Secure`, nunca devuelven el JWT en JSON y consultan la fila por solicitud autenticada; el logout confirmado invalida de inmediato validaciones posteriores al commit. El detalle de este compromiso está en `docs/sesiones-opacas.md`.
 
 ## Rutas
 
@@ -15,10 +15,10 @@ Las tasas generales, de registro, de carga y el bloqueo progresivo documentados 
 | GET | `/health/live` | Pública; solo indica que el proceso API responde, sin detalles de dependencias/secretos | Sonda local del runtime | 200 |
 | GET | `/health/ready` | Pública; consulta mínima de PostgreSQL, sin detalles de errores y sin caché | Sonda local del runtime | 200, 503 |
 | POST | `/v1/auth/register` | Pública; validar entrada | 5/h/IP | 400, 409, 422, 429, 503 |
-| POST | `/v1/auth/login` | Pública; requiere token CSRF preauth de same-origin y valida `Origin`; inicia contraseña | 5 fallos por cuenta+IP antes de bloqueo progresivo | 400, 401, 403, 429 |
-| POST | `/v1/auth/login/mfa` | Etapa de login con desafío preauth firmado y CSRF; no acepta JWT aún | 5 intentos/cuenta+IP | 401, 403, 429 |
-| GET | `/v1/auth/status` | Pública; respuesta mínima, no filtra perfil; emite nonce CSRF preauth | 60/min/IP | 429 |
-| POST | `/v1/auth/logout` | JWT cookie + CSRF | 60/min/cuenta | 401, 403 |
+| POST | `/v1/auth/login` | Requiere Origin exacto, CSRF preauth y limiter inyectado; contraseña | Configurado por el llamador | 400, 401, 403, 429, 503 |
+| POST | `/v1/auth/login/mfa` | Desafío firmado, de un solo uso y ligado al CSRF que lo emitió; revalida contraseña y TOTP | Configurado por el llamador | 401, 403, 429, 503 |
+| GET | `/v1/auth/status` | Respuesta mínima; verifica sesión DB; devuelve CSRF JSON y cookie HttpOnly | Configurado por el llamador | 403, 429, 503 |
+| POST | `/v1/auth/logout` | JWT cookie + CSRF + Origin exacto; revocación DB | Configurado por el llamador | 401, 403, 429, 503 |
 | POST | `/v1/users/me/password` | JWT + CSRF + contraseña actual | 5/h/cuenta | 400, 401, 429, 503 |
 | POST | `/v1/users/me/totp/setup` | JWT + CSRF; reautenticación | 5/h/cuenta | 401, 403, 409, 429 |
 | POST | `/v1/users/me/totp/confirm` | JWT + CSRF + código TOTP | 5 intentos/15 min/cuenta | 400, 401, 429 |
@@ -33,7 +33,7 @@ Las tasas generales, de registro, de carga y el bloqueo progresivo documentados 
 | POST | `/v1/reports/{report_id}/download-token` | JWT + CSRF + dueño; emite token de un uso | 10/h/cuenta | 401, 404, 409, 429 |
 | GET | `/v1/downloads/{token}` | JWT + dueño del recurso + token válido de un uso; vence en 10 min | 60/min/IP | 401, 403/404, 410, 429 |
 
-Son 18 rutas funcionales candidatas, además de las dos sondas operacionales. Registro, login y status son públicas con tasa limitada; login/status entregan o exigen un nonce CSRF preauth y validación de origen para impedir que otro sitio cree una sesión en el navegador de la víctima. `/health/live` solo informa `ok` y no consulta DB ni secretos. La etapa MFA solo acepta desafío preautenticado, CSRF y tasa limitada. La expiración exacta del JWT corto, formato del desafío MFA, contrato final de CSRF y paginación siguen pendientes. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
+Son 18 rutas funcionales candidatas, además de las dos sondas operacionales. Las cuatro rutas de auth están implementadas detrás de dependencias inyectadas: una sesión DB, llaves y un rate limiter; sin ellas responden fail-closed con `503`. Los orígenes permitidos deben ser exactos, CORS permite credenciales solo para esa lista y las mutaciones exigen Origin y CSRF coincidentes. Las cookies JWT y CSRF son `HttpOnly`, `Secure`, host-only; el token CSRF también vuelve solo en JSON para uso en memoria. `SameSite=Lax` es el valor predeterminado; `None` requiere orígenes exactos y siempre se emite con `Secure`. No hay ruta de refresh ni claim de preparación para producción. Las otras 14 rutas siguen pendientes. `/health/live` solo informa `ok` y no consulta DB ni secretos. El endpoint de descarga exige simultáneamente sesión JWT, propiedad del recurso y token de un uso; el token por sí solo no autoriza acceso.
 
 `/health/ready` ejecuta `SELECT 1` con tiempo de conexión limitado y devuelve únicamente `ok` o `unavailable`; no confirma que existan migraciones, tablas o datos. La prueba contra PostgreSQL real sigue pendiente.
 

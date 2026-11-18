@@ -2,8 +2,9 @@
 
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, PositiveInt
+from pydantic import Field, PositiveInt, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,42 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "demo", "production"] = "production"
     secret_dir: Path = Path("/run/secrets")
+    auth_allowed_origins: tuple[str, ...] = ()
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+    @field_validator("auth_allowed_origins")
+    @classmethod
+    def validate_auth_allowed_origins(cls, origins: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(origins)) != len(origins):
+            raise ValueError("Authentication origins must be unique")
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (
+                origin == "*"
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.hostname is None
+                or parsed.netloc.endswith(":")
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                raise ValueError("Authentication origins must be exact HTTP(S) origins")
+            try:
+                port = parsed.port
+            except ValueError as error:
+                raise ValueError("Authentication origins must use a valid port") from error
+            if port == 0:
+                raise ValueError("Authentication origins must use a valid port")
+        return origins
+
+    @model_validator(mode="after")
+    def validate_auth_cookie_policy(self) -> "Settings":
+        if self.auth_cookie_samesite == "none" and not self.auth_allowed_origins:
+            raise ValueError("SameSite=None requires an exact allowed-origin list")
+        return self
 
     # User-approved initial demo limits from docs/limites.md (not production defaults).
     upload_max_bytes: int = Field(default=25 * 1024 * 1024, gt=0)

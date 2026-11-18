@@ -8,14 +8,35 @@ from hashlib import sha256
 from uuid import uuid4
 
 import jwt
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, delete, select, update
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from metaguard_api.accounts import Account, AccountSession
+from metaguard_api.accounts import Account, AccountSession, UTCDateTime
+from metaguard_api.database import Base
 
 _TOKEN_LENGTH = 43
 _TOKEN_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 _REQUIRED_CLAIMS = ["iss", "aud", "iat", "exp", "sub", "jti"]
+
+
+class MfaLoginChallenge(Base):
+    """Persist only one-use MFA challenge and issuing-CSRF digests."""
+
+    __tablename__ = "mfa_login_challenges"
+    __table_args__ = (
+        CheckConstraint(
+            "length(challenge_digest) = 64", name="ck_mfa_login_challenge_digest_length"
+        ),
+        CheckConstraint("length(csrf_digest) = 64", name="ck_mfa_login_csrf_digest_length"),
+        Index("ix_mfa_login_challenges_expires_at", "expires_at"),
+    )
+
+    challenge_digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    csrf_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
 
 
 @dataclass(frozen=True)
@@ -66,6 +87,62 @@ def _valid_configuration(signing_key: str, issuer: str, audience: str) -> bool:
         and isinstance(audience, str)
         and bool(audience)
     )
+
+
+def create_mfa_login_challenge(
+    session: Session,
+    account_id: str,
+    challenge_token: str,
+    csrf_token: str,
+    *,
+    expires_at: datetime,
+) -> bool:
+    """Stage a challenge bound to its CSRF token; the caller owns the transaction."""
+    challenge_digest = _token_digest(challenge_token)
+    csrf_digest = _token_digest(csrf_token)
+    expiration = _utc_datetime(expires_at)
+    if (
+        not isinstance(account_id, str)
+        or not 1 <= len(account_id) <= 36
+        or challenge_digest is None
+        or csrf_digest is None
+        or expiration is None
+    ):
+        return False
+    session.add(
+        MfaLoginChallenge(
+            challenge_digest=challenge_digest,
+            account_id=account_id,
+            csrf_digest=csrf_digest,
+            expires_at=expiration,
+        )
+    )
+    return True
+
+
+def consume_mfa_login_challenge(
+    session: Session,
+    challenge_token: str,
+    csrf_token: str,
+    *,
+    now: datetime,
+) -> str | None:
+    """Atomically consume one unexpired challenge in the caller's transaction."""
+    challenge_digest = _token_digest(challenge_token)
+    csrf_digest = _token_digest(csrf_token)
+    current_time = _utc_datetime(now)
+    if challenge_digest is None or csrf_digest is None or current_time is None:
+        return None
+    return session.execute(
+        delete(MfaLoginChallenge)
+        .where(
+            MfaLoginChallenge.challenge_digest == challenge_digest,
+            MfaLoginChallenge.csrf_digest == csrf_digest,
+            MfaLoginChallenge.expires_at > current_time,
+        )
+        .returning(MfaLoginChallenge.account_id)
+        .execution_options(synchronize_session=False)
+    ).scalar_one_or_none()
 
 
 def _decode_claims(
