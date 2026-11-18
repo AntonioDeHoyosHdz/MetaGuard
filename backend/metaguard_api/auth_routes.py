@@ -91,6 +91,14 @@ class AuthRuntime:
     email_verification_lifetime: timedelta | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class AuthenticatedOwner:
+    """Authenticated account identity returned by shared route security checks."""
+
+    account_id: str
+    now: datetime
+
+
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -194,6 +202,61 @@ def _allow(runtime: AuthRuntime, request: Request, action: str, identity: str) -
         return bool(runtime.rate_limiter.allow(action, _client_ip(request), _identity(identity)))
     except Exception:
         return None
+
+
+def authenticate_owner(
+    request: Request,
+    settings: Settings,
+    runtime: AuthRuntime | None,
+    *,
+    ip_rate_action: str,
+    account_rate_action: str,
+) -> tuple[AuthenticatedOwner | None, JSONResponse | None]:
+    """Validate the established Origin/CSRF, session, and injected rate-limit boundary."""
+    if not _runtime_ready(runtime):
+        return None, _error(503, "auth_unavailable", "Authentication is unavailable")
+    if not _origin_and_csrf_valid(request, settings):
+        return None, _error(403, "origin_or_csrf", "Origin or CSRF validation failed")
+
+    ip_allowed = _allow(runtime, request, ip_rate_action, "anonymous")
+    if ip_allowed is None:
+        return None, _error(503, "auth_unavailable", "Authentication is unavailable")
+    if not ip_allowed:
+        return None, _error(429, "rate_limited", "Too many requests")
+
+    session_token = request.cookies.get(SESSION_COOKIE)
+    now = _current_time(runtime)
+    if now is None:
+        return None, _error(503, "auth_unavailable", "Authentication is unavailable")
+    if not session_token:
+        return None, _error(401, "unauthorized", "Authentication is required")
+
+    try:
+        with runtime.session_factory.begin() as session:
+            active = get_active_session(
+                session,
+                session_token,
+                signing_key=runtime.signing_key,
+                issuer=runtime.issuer,
+                audience=runtime.audience,
+                now=now,
+            )
+            csrf_token = request.cookies.get(CSRF_COOKIE, "")
+            if (
+                active is None
+                or not isinstance(active.account_id, str)
+                or not verify_csrf_token(active, csrf_token)
+            ):
+                return None, _error(401, "unauthorized", "Authentication is required")
+
+            account_allowed = _allow(runtime, request, account_rate_action, active.account_id)
+            if account_allowed is None:
+                return None, _error(503, "auth_unavailable", "Authentication is unavailable")
+            if not account_allowed:
+                return None, _error(429, "rate_limited", "Too many requests")
+            return AuthenticatedOwner(active.account_id, now), None
+    except Exception:
+        return None, _error(503, "auth_unavailable", "Authentication is unavailable")
 
 
 def _origin_and_csrf_valid(request: Request, settings: Settings) -> bool:

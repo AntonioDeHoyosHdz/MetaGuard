@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from metaguard_api.auth_routes import AuthRuntime, create_auth_router
 from metaguard_api.database import DatabaseSettings, create_database
+from metaguard_api.file_routes import FileRuntime, create_file_router
 from metaguard_api.settings import Settings
 
 
@@ -24,7 +25,10 @@ class ReadyStatus(BaseModel):
 
 
 def create_app(
-    settings: Settings | None = None, *, auth_runtime: AuthRuntime | None = None
+    settings: Settings | None = None,
+    *,
+    auth_runtime: AuthRuntime | None = None,
+    file_runtime: FileRuntime | None = None,
 ) -> FastAPI:
     """Create the API without connecting to external services at import time."""
     app_settings = settings or Settings()
@@ -39,7 +43,9 @@ def create_app(
     )
     app.state.settings = app_settings
     app.state.auth_runtime = auth_runtime
+    app.state.file_runtime = file_runtime
     app.include_router(create_auth_router(app_settings, auth_runtime))
+    app.include_router(create_file_router(app_settings, auth_runtime, file_runtime))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(app_settings.auth_allowed_origins),
