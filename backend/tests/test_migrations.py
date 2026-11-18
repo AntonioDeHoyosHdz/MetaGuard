@@ -207,3 +207,48 @@ def test_email_verification_migration_preserves_legacy_account_data() -> None:
             ).one() == ("legacy-1", "legacy@example.test", "unchanged-hash")
     finally:
         engine.dispose()
+
+
+def test_account_session_migration_preserves_existing_accounts() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0006_email_verification")
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id,email,password_hash,email_verified_at) "
+                    "VALUES ('legacy-session-1','legacy@example.test','unchanged-hash',NULL)"
+                )
+            )
+            command.upgrade(cfg, "head")
+            assert "account_sessions" in inspect(connection).get_table_names()
+            assert {c["name"] for c in inspect(connection).get_columns("account_sessions")} == {
+                "id",
+                "account_id",
+                "token_digest",
+                "csrf_digest",
+                "created_at",
+                "expires_at",
+                "revoked_at",
+            }
+            assert (
+                connection.execute(
+                    text("SELECT password_hash FROM accounts WHERE id='legacy-session-1'")
+                ).scalar_one()
+                == "unchanged-hash"
+            )
+            command.check(cfg)
+            command.downgrade(cfg, "0006_email_verification")
+            assert "account_sessions" not in inspect(connection).get_table_names()
+            assert (
+                connection.execute(
+                    text("SELECT password_hash FROM accounts WHERE id='legacy-session-1'")
+                ).scalar_one()
+                == "unchanged-hash"
+            )
+    finally:
+        engine.dispose()

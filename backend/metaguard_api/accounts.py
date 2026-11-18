@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     String,
     TypeDecorator,
     UniqueConstraint,
@@ -63,3 +64,26 @@ class EmailVerificationToken(Base):
     )
     token_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class AccountSession(Base):
+    """Opaque authenticated session; only token digests are persisted."""
+
+    __tablename__ = "account_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "length(token_digest) = 64", name="ck_account_sessions_token_digest_length"
+        ),
+        CheckConstraint("length(csrf_digest) = 64", name="ck_account_sessions_csrf_digest_length"),
+        Index("ix_account_sessions_account_expires", "account_id", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
