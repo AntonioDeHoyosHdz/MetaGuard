@@ -17,30 +17,15 @@ from metaguard_api.auth_routes import (
     _error,
     authenticate_owner,
 )
+from metaguard_api.database import Database
 from metaguard_api.file_storage import InMemoryTemporaryFileStore
 from metaguard_api.processing_ipc_client import ProcessingClient
 from metaguard_api.processing_limits import MAX_FILE_SIZE
 from metaguard_api.processing_types import ProcessedFile, ProcessingReport
+from metaguard_api.reports import _REPORT_CATEGORIES, create_report
 from metaguard_api.settings import Settings
 
 _SUPPORTED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_REPORT_CATEGORIES = frozenset(
-    {
-        "author",
-        "color_profile",
-        "date_time",
-        "device_model",
-        "document_info",
-        "gps",
-        "image_metadata",
-        "manufacturer_notes",
-        "path",
-        "serial_number",
-        "software",
-        "thumbnail",
-        "xmp",
-    }
-)
 _TEMPORARY_FILE_TTL = timedelta(minutes=10)
 _MAX_ANALYSIS_BODY_BYTES = 1024
 
@@ -59,6 +44,7 @@ class FileRuntime:
     store: InMemoryTemporaryFileStore = field(repr=False)
     storage_key: bytes = field(repr=False)
     processing_client: ProcessingClient = field(repr=False)
+    database: Database | None = field(default=None, repr=False)
     _uploads: dict[str, _UploadMetadata] = field(default_factory=dict, repr=False)
     _lock: RLock = field(default_factory=RLock, repr=False)
 
@@ -119,6 +105,7 @@ def _file_runtime_ready(runtime: FileRuntime | None) -> bool:
         and isinstance(runtime.storage_key, bytes)
         and len(runtime.storage_key) == 32
         and isinstance(runtime.processing_client, ProcessingClient)
+        and isinstance(runtime.database, Database)
         and isinstance(runtime._uploads, dict)
         and callable(getattr(runtime._lock, "__enter__", None))
     )
@@ -361,7 +348,37 @@ def create_file_router(
         if report is None or processed.media_type != metadata.content_type:
             return _error(503, "files_unavailable", "File processing is unavailable")
 
+        report_id = str(uuid4())
+        try:
+            stored_cleaned = await run_in_threadpool(
+                file_runtime.store.put,
+                report_id,
+                owner.account_id,
+                processed.cleaned_bytes,
+                key=file_runtime.storage_key,
+                now=now,
+            )
+            if not stored_cleaned:
+                return _error(503, "files_unavailable", "File processing is unavailable")
+            resource = await run_in_threadpool(
+                create_report,
+                file_runtime.database,
+                report_id=report_id,
+                owner_id=owner.account_id,
+                report=report,
+                now=now,
+            )
+            if resource is None:
+                await run_in_threadpool(file_runtime.store.delete, report_id, owner.account_id)
+                return _error(503, "files_unavailable", "File processing is unavailable")
+        except Exception:
+            try:
+                await run_in_threadpool(file_runtime.store.delete, report_id, owner.account_id)
+            except Exception:
+                pass
+            return _error(503, "files_unavailable", "File processing is unavailable")
+
         # Consent is parsed for the per-file contract; no VirusTotal provider is configured here.
-        return JSONResponse({"report": report}, headers={"Cache-Control": "no-store"})
+        return JSONResponse(resource, headers={"Cache-Control": "no-store"})
 
     return router

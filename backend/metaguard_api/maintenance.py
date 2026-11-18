@@ -6,11 +6,12 @@ import sys
 import time
 
 from metaguard_api.database import DatabaseSettings, create_database
+from metaguard_api.reports import purge_expired_reports
 from metaguard_api.reputation_cache import purge_expired
 from metaguard_api.system_security_events import purge_expired_events
 
 
-def _purge_once(*, include_security_events: bool) -> int:
+def _purge_once(*, include_security_events: bool, include_file_reports: bool = False) -> int:
     """Run selected retention deletes in one transaction with generic errors."""
     try:
         database = create_database(DatabaseSettings(), connect_timeout_seconds=3)
@@ -20,6 +21,9 @@ def _purge_once(*, include_security_events: bool) -> int:
                 deleted = purge_expired(session, now=now)
                 deleted_events = (
                     purge_expired_events(session, now=now) if include_security_events else 0
+                )
+                deleted_reports = (
+                    purge_expired_reports(session, now=now) if include_file_reports else 0
                 )
         finally:
             database.close()
@@ -34,6 +38,8 @@ def _purge_once(*, include_security_events: bool) -> int:
     print(f"Purged {deleted} expired reputation cache entries.")
     if include_security_events:
         print(f"Purged {deleted_events} expired system security events.")
+    if include_file_reports:
+        print(f"Purged {deleted_reports} expired file reports.")
     return 0
 
 
@@ -43,8 +49,8 @@ def purge_once() -> int:
 
 
 def purge_maintenance_once() -> int:
-    """Atomically purge cache and expired system events."""
-    return _purge_once(include_security_events=True)
+    """Atomically purge cache, expired system events, and file reports."""
+    return _purge_once(include_security_events=True, include_file_reports=True)
 
 
 def _purge_interval(value: str) -> int:

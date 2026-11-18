@@ -10,12 +10,13 @@ from sqlalchemy.pool import StaticPool
 from metaguard_api.account_credentials import hash_password
 from metaguard_api.accounts import Account
 from metaguard_api.auth_routes import AuthRuntime
-from metaguard_api.database import Base
+from metaguard_api.database import Base, Database
 from metaguard_api.file_routes import FileRuntime
 from metaguard_api.file_storage import InMemoryTemporaryFileStore
 from metaguard_api.main import create_app
 from metaguard_api.processing_ipc_client import ProcessingClient
 from metaguard_api.processing_types import ProcessedFile, ProcessingReport
+from metaguard_api.reports import FileReport
 from metaguard_api.settings import Settings
 
 ORIGIN = "https://frontend.example"
@@ -100,7 +101,12 @@ def api_factory():
         store = InMemoryTemporaryFileStore(max_bytes=max_store_bytes)
         processor = FakeProcessingClient()
         file_runtime = (
-            FileRuntime(store=store, storage_key=STORAGE_KEY, processing_client=processor)
+            FileRuntime(
+                store=store,
+                storage_key=STORAGE_KEY,
+                processing_client=processor,
+                database=Database(engine),
+            )
             if with_file_runtime
             else None
         )
@@ -190,18 +196,18 @@ def test_upload_stores_raw_bytes_and_analysis_returns_only_minimized_report(api_
     )
 
     assert analysis.status_code == 200
-    assert analysis.json() == {
-        "report": {
-            "media_type": "image/png",
-            "metadata_categories": ["gps", "software"],
-            "output_verified": True,
-            "width": 12,
-            "height": 8,
-            "page_count": None,
-            "active_content_removed": False,
-            "uri_links_removed": 0,
-        }
+    assert set(analysis.json()) == {"report_id", "report", "created_at", "expires_at"}
+    assert analysis.json()["report"] == {
+        "media_type": "image/png",
+        "metadata_categories": ["gps", "software"],
+        "output_verified": True,
+        "width": 12,
+        "height": 8,
+        "page_count": None,
+        "active_content_removed": False,
+        "uri_links_removed": 0,
     }
+    assert analysis.json()["expires_at"] == "2026-11-19T12:00:00+00:00"
     assert b"synthetic-cleaned-copy" not in analysis.content
     assert processor.calls == [(original, "image/png")]
     assert [call[0] for call in limiter.calls if call[0].startswith("uploads_")] == [
@@ -440,3 +446,23 @@ def test_processing_failure_is_generic_and_does_not_expose_processor_details(api
     assert response.status_code == 503
     assert b"synthetic private processing details" not in response.content
     assert len(processor.calls) == 1
+
+
+def test_report_persistence_failure_removes_the_new_cleaned_copy(api_factory, monkeypatch):
+    _, factory, app, store, _, _, _ = api_factory()
+    client, headers = login_client(app)
+    original = b"synthetic upload bytes"
+    uploaded = client.post(
+        "/v1/uploads", content=original, headers={**headers, "Content-Type": "image/png"}
+    )
+
+    def fail_transaction():
+        raise RuntimeError("synthetic database failure")
+
+    monkeypatch.setattr(app.state.file_runtime.database, "transaction", fail_transaction)
+    analysis = client.post(f"/v1/analyses/{uploaded.json()['upload_id']}", json={}, headers=headers)
+
+    assert analysis.status_code == 503
+    assert store.size_bytes == len(original)
+    with factory() as session:
+        assert session.query(FileReport).count() == 0

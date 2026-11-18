@@ -1,13 +1,13 @@
 # Datos tratados y retenidos
 
-**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** requisitos propuestos; hay implementación parcial de la caché de reputación y una primitiva privada de archivo temporal cifrado en memoria, pero no existe flujo de carga/descarga ni runtime conectado. No se ha configurado una llave productiva ni se ha demostrado retención/purga del producto.
+**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** hay rutas T3d2/T3d3 de carga, análisis, reporte y descarga detrás de dependencias inyectadas, además de una primitiva privada de archivo temporal cifrado en memoria. No hay runtime/llave productiva configurados ni se demostró retención/purga del producto; el flujo no es multi-worker durable.
 
 ## Inventario de datos
 
 | Entidad/dato | Finalidad | Retención U2 | Protección U2 | Pendiente / riesgo |
 |---|---|---|---|---|
-| Archivo original + copia limpia | Procesar y permitir descarga | Requisito propuesto: máximo 10 min; borrar al descargar o expirar | Solo existe una primitiva privada que guarda payload cifrado AES-256-GCM en memoria, recibe llave de 32 bytes y hora UTC del llamador, liga AAD a file/owner IDs, limita bytes y expone borrado por owner/purga-expirada | Sin rutas/API, clave productiva, persistencia, evidencia de runtime/purga, borrado al descargar ni garantía de borrado físico de memoria. No declarar comportamiento de usuario o retención real. |
-| Reporte | Mostrar antes/después | 24 h o borrado manual | Valores sensibles (GPS, serie, autor) cifrados por campo AES-256-GCM | Inventario de cada campo sensible. |
+| Archivo original + copia limpia | Procesar y permitir descarga | Original y copia limpia dejan de ser legibles tras 10 min según reloj UTC del llamador; copia limpia también se borra al descargar o al borrar explícitamente el reporte | `InMemoryTemporaryFileStore` cifra AES-256-GCM en memoria con llave de 32 bytes inyectada, AAD ligado a file/owner IDs y límite de bytes. No se escribe archivo en disco por esta primitiva. | T3d2/T3d3 rutas sintéticas existen, pero no hay runtime ni clave productiva. La expiración niega lectura y elimina en lectura/purga; no hay limpieza programada del store y el CLI de mantenimiento separado no puede borrarlo. No hay durabilidad entre procesos, retención multi-worker ni garantía de borrado físico de memoria. |
+| Reporte | Mostrar el resultado minimizado y permitir descargar la copia limpia | Fila DB: 24 h y borrado manual; token: máximo 10 min y no después del vencimiento de la copia limpia; copia limpia: 10 min desde análisis | `file_reports` conserva dueño, ID, timestamps y JSON con solo la proyección allowlisted `ProcessingReport`: MIME, categorías de nombres, verificación, dimensiones/páginas y contadores/flags. No guarda valores de GPS, serie, autor u otros metadatos extraídos. El token se persiste solo como digest SHA-256 y se consume una vez. | Pruebas con SQLite/mocks, sin prueba de concurrencia PostgreSQL ni DB/ruta de despliegue real. El maintenance command purga filas DB solo al ejecutarse; no está programado. No afirmar cifrado de campo ni protección de DB en reposo más allá del entorno no verificado. |
 | Eventos de seguridad, incluida IP | Monitoreo/alertas | 30 días | Cada usuario accede solo a los propios | Campos exactos, acceso operador y purga. |
 | Hash de contraseña | Autenticación | Mientras exista la cuenta | Argon2id; nunca texto claro | Parámetros Argon2id se decidirán en implementación. |
 | Secreto TOTP | MFA | Mientras exista la cuenta | AES-256-GCM | Gestión de llaves y recuperación. |
@@ -19,7 +19,7 @@
 - Nunca almacenar contraseña en claro, contenido de archivo en logs ni hash SHA-1 completo para la verificación de brechas.
 - Borrado de cuenta debe eliminar reportes y eventos asociados, según U2 §3.3; el detalle de retención residual por respaldos está pendiente.
 - Métricas/telemetría deben ser agregadas y no incluir rutas, GPS, nombres de archivo ni hashes completos sin necesidad aprobada.
-- No declarar cumplida una retención hasta probar purga y acceso por objeto.
+- No declarar cumplida una retención hasta probar purga y acceso por objeto. La prueba sintética no equivale a evidencia de un runtime real ni de PostgreSQL concurrente.
 
 ## Qué pasa si falta
 

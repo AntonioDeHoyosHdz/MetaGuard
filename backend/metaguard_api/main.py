@@ -13,6 +13,7 @@ from sqlalchemy import text
 from metaguard_api.auth_routes import AuthRuntime, create_auth_router
 from metaguard_api.database import DatabaseSettings, create_database
 from metaguard_api.file_routes import FileRuntime, create_file_router
+from metaguard_api.report_routes import create_report_router
 from metaguard_api.settings import Settings
 
 
@@ -46,11 +47,12 @@ def create_app(
     app.state.file_runtime = file_runtime
     app.include_router(create_auth_router(app_settings, auth_runtime))
     app.include_router(create_file_router(app_settings, auth_runtime, file_runtime))
+    app.include_router(create_report_router(app_settings, auth_runtime, file_runtime))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(app_settings.auth_allowed_origins),
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-CSRF-Token"],
         max_age=600,
     )

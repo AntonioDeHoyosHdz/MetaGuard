@@ -252,3 +252,42 @@ def test_account_session_migration_preserves_existing_accounts() -> None:
             )
     finally:
         engine.dispose()
+
+
+def test_file_reports_migration_preserves_accounts_and_reverses_cleanly() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0008_mfa_login_challenges")
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id,email,password_hash,email_verified_at) "
+                    "VALUES ('legacy-report-1','legacy-report@example.test','unchanged-hash',NULL)"
+                )
+            )
+            command.upgrade(cfg, "head")
+            columns = {column["name"] for column in inspect(connection).get_columns("file_reports")}
+            assert columns == {
+                "id",
+                "owner_id",
+                "report_json",
+                "created_at",
+                "expires_at",
+                "download_token_digest",
+                "download_token_expires_at",
+            }
+            command.check(cfg)
+            command.downgrade(cfg, "0008_mfa_login_challenges")
+            assert "file_reports" not in inspect(connection).get_table_names()
+            assert (
+                connection.execute(
+                    text("SELECT password_hash FROM accounts WHERE id='legacy-report-1'")
+                ).scalar_one()
+                == "unchanged-hash"
+            )
+    finally:
+        engine.dispose()

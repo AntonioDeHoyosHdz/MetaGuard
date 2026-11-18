@@ -196,10 +196,113 @@ def test_purge_command_also_enforces_security_event_retention(tmp_path, monkeypa
     output = capsys.readouterr().out
     assert "Purged 0 expired reputation cache entries." in output
     assert "1 expired system security events" in output
+    assert "Purged 0 expired file reports." in output
     check_db = Database(create_engine(url))
     with check_db.transaction() as session:
         assert len(session.scalars(select(SystemSecurityEvent)).all()) == 1
         assert session.scalar(select(SystemSecurityEvent.created_at)) == 200
+    check_db.close()
+
+
+def test_maintenance_purges_expired_reports_and_preserves_active_reports(
+    tmp_path, monkeypatch, capsys
+):
+    from uuid import uuid4
+
+    from metaguard_api.accounts import Account
+    from metaguard_api.reports import FileReport
+
+    url = f"sqlite:///{tmp_path / 'report-retention.sqlite'}"
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    db = Database(engine)
+    owner_id = str(uuid4())
+    with db.transaction() as session:
+        session.add(
+            Account(
+                id=owner_id,
+                email="reports@example.test",
+                password_hash="synthetic-hash",
+            )
+        )
+        session.add_all(
+            [
+                FileReport(
+                    id=str(uuid4()),
+                    owner_id=owner_id,
+                    report_json="{}",
+                    created_at=1,
+                    expires_at=99,
+                ),
+                FileReport(
+                    id=str(uuid4()),
+                    owner_id=owner_id,
+                    report_json="{}",
+                    created_at=1,
+                    expires_at=101,
+                ),
+            ]
+        )
+    monkeypatch.setattr("metaguard_api.maintenance.create_database", lambda *_args, **_kwargs: db)
+    monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: 100)
+
+    assert main(["purge-maintenance"]) == 0
+    assert "Purged 1 expired file reports." in capsys.readouterr().out
+    check_db = Database(create_engine(url))
+    with check_db.transaction() as session:
+        assert len(session.query(FileReport).all()) == 1
+    check_db.close()
+
+
+def test_report_purge_failure_rolls_back_joint_maintenance(tmp_path, monkeypatch, capsys):
+    from uuid import uuid4
+
+    from metaguard_api.accounts import Account
+    from metaguard_api.reports import FileReport, purge_expired_reports
+    from metaguard_api.system_security_events import (
+        SecurityEventType,
+        SystemSecurityEvent,
+        record_event,
+    )
+
+    url = f"sqlite:///{tmp_path / 'report-rollback.sqlite'}"
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    db = Database(engine)
+    owner_id = str(uuid4())
+    with db.transaction() as session:
+        session.add(
+            Account(
+                id=owner_id,
+                email="rollback@example.test",
+                password_hash="synthetic-hash",
+            )
+        )
+        session.add(
+            FileReport(
+                id=str(uuid4()),
+                owner_id=owner_id,
+                report_json="{}",
+                created_at=1,
+                expires_at=99,
+            )
+        )
+        record_event(session, SecurityEventType.PASSWORD_BREACH_CHECK_UNAVAILABLE, now=1)
+
+    def fail_after_report_delete(session, *, now):
+        purge_expired_reports(session, now=now)
+        raise RuntimeError("synthetic report purge failure")
+
+    monkeypatch.setattr("metaguard_api.maintenance.create_database", lambda *_args, **_kwargs: db)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_expired_reports", fail_after_report_delete)
+    monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: 100)
+
+    assert main(["purge-maintenance"]) == 1
+    assert "synthetic" not in capsys.readouterr().err
+    check_db = Database(create_engine(url))
+    with check_db.transaction() as session:
+        assert session.query(FileReport).count() == 1
+        assert session.query(SystemSecurityEvent).count() == 1
     check_db.close()
 
 
