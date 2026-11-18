@@ -6,6 +6,7 @@ import re
 import warnings
 import zlib
 from io import BytesIO
+from itertools import chain
 
 import pikepdf
 from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
@@ -64,6 +65,7 @@ _DANGEROUS_PDF_ACTIONS = frozenset(
     }
 )
 _TRAILER_ID_RE = re.compile(rb"/ID\s*\[\s*<[^>]*>\s*<[^>]*>\s*\]")
+_PRIVATE_PDF_METADATA_KEYS = frozenset({"/PieceInfo"})
 _SENSITIVE_PDF_INFO_KEYS = frozenset(
     {
         "/Author",
@@ -287,6 +289,7 @@ def _process_pdf(data: bytes) -> ProcessedFile:
             if pdf.get_warnings():
                 raise FileProcessingError("PDF parser reported a structural warning")
 
+            private_objects = _collect_private_metadata_objects(pdf)
             categories, active_content, uri_count = _scan_pdf(pdf, sanitize=True)
             if pdf.get_warnings():
                 raise FileProcessingError("PDF parser reported a structural warning")
@@ -299,6 +302,7 @@ def _process_pdf(data: bytes) -> ProcessedFile:
                 del pdf.Root["/Metadata"]
             if "/ID" in pdf.trailer:
                 del pdf.trailer["/ID"]
+            _reject_retained_private_objects(pdf, private_objects)
             output = BytesIO()
             pdf.save(output, deterministic_id=True, fix_metadata_version=False)
         cleaned = output.getvalue()
@@ -325,6 +329,60 @@ def _process_pdf(data: bytes) -> ProcessedFile:
             uri_links_removed=uri_count,
         ),
     )
+
+
+def _walk_pdf_graph(roots):
+    """Walk bounded object graphs without decoding stream payloads."""
+    visited: set[tuple[int, int]] = set()
+    nodes = 0
+
+    def visit(obj, depth):
+        nonlocal nodes
+        nodes += 1
+        if depth > 128 or nodes > 100_000:
+            raise FileProcessingError("PDF object graph exceeds safe inspection limits")
+        if isinstance(obj, pikepdf.Object):
+            identity = tuple(obj.objgen)
+            if identity != (0, 0):
+                if identity in visited:
+                    return
+                visited.add(identity)
+        yield obj
+        if isinstance(obj, (pikepdf.Dictionary, pikepdf.Stream)):
+            for key in obj.keys():
+                yield from visit(obj.get(key), depth + 1)
+        elif isinstance(obj, pikepdf.Array):
+            for value in obj:
+                yield from visit(value, depth + 1)
+
+    for root in roots:
+        yield from visit(root, 0)
+
+
+def _collect_private_metadata_objects(pdf: pikepdf.Pdf) -> set[tuple[int, int]]:
+    """Remember indirect objects reachable from private metadata before removal."""
+    roots = []
+    for obj in _walk_pdf_graph(chain(pdf.objects, (pdf.Root, pdf.trailer))):
+        if isinstance(obj, (pikepdf.Dictionary, pikepdf.Stream)):
+            for key in obj.keys():
+                if str(key) in _PRIVATE_PDF_METADATA_KEYS:
+                    roots.append(obj.get(key))
+    return {
+        tuple(obj.objgen)
+        for obj in _walk_pdf_graph(roots)
+        if isinstance(obj, pikepdf.Object) and tuple(obj.objgen) != (0, 0)
+    }
+
+
+def _reject_retained_private_objects(
+    pdf: pikepdf.Pdf, private_objects: set[tuple[int, int]]
+) -> None:
+    """Reject indirect private objects still reachable after metadata removal."""
+    if not private_objects:
+        return
+    for obj in _walk_pdf_graph((pdf.trailer,)):
+        if isinstance(obj, pikepdf.Object) and tuple(obj.objgen) in private_objects:
+            raise FileProcessingError("PDF contains shared private metadata")
 
 
 def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]:
@@ -382,6 +440,11 @@ def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]
             keys = list(obj.keys())
             for key in keys:
                 normalized_key = str(key)
+                if normalized_key in _PRIVATE_PDF_METADATA_KEYS:
+                    categories.add("document_info")
+                    if sanitize:
+                        del obj[key]
+                    continue
                 category = _metadata_category(normalized_key.lstrip("/").casefold())
                 if category:
                     categories.add(category)
@@ -451,6 +514,7 @@ def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]
     for obj in pdf.objects:
         visit(obj)
     visit(pdf.Root)
+    visit(pdf.trailer)
 
     # Remove URI action dictionaries wherever they occur, after the traversal has
     # counted them. Re-walk parents to avoid leaking or consulting URI values.
@@ -458,6 +522,7 @@ def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]
         for obj in pdf.objects:
             _remove_uri_actions(obj, set())
         _remove_uri_actions(pdf.Root, set())
+        _remove_uri_actions(pdf.trailer, set())
 
     return categories, active_content, uri_count
 
@@ -493,7 +558,9 @@ def _verify_pdf(data: bytes, expected_pages: int) -> None:
             raise FileProcessingError("Sanitized PDF parser reported a warning")
         if pdf.docinfo or "/Metadata" in pdf.Root or "/ID" in pdf.trailer:
             raise FileProcessingError("Sanitized PDF still contains document metadata")
-        _, active_content, uri_count = _scan_pdf(pdf, sanitize=False)
+        categories, active_content, uri_count = _scan_pdf(pdf, sanitize=False)
+        if "document_info" in categories:
+            raise FileProcessingError("Sanitized PDF still contains document metadata")
         if pdf.get_warnings():
             raise FileProcessingError("Sanitized PDF parser reported a warning")
         _verify_page_content_streams(pdf)
