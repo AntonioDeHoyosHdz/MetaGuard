@@ -5,17 +5,19 @@ from __future__ import annotations
 import re
 import warnings
 import zlib
-from dataclasses import dataclass
 from io import BytesIO
 
 import pikepdf
 from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
-from metaguard_api.processing_limits import MAX_FILE_SIZE
+from metaguard_api.processing_limits import (
+    MAX_FILE_SIZE,
+    MAX_IMAGE_PIXELS,
+    MAX_IMAGE_SIDE,
+    MAX_PDF_PAGES,
+)
+from metaguard_api.processing_types import ProcessedFile, ProcessingReport
 
-MAX_IMAGE_SIDE = 8_000
-MAX_IMAGE_PIXELS = 40_000_000
-MAX_PDF_PAGES = 100
 MAX_PDF_CONTENT_BYTES = 25 * 1024 * 1024
 
 _MIME_FORMATS = {
@@ -83,29 +85,6 @@ _PRESERVED_PNG_MODES = frozenset(
 
 class FileProcessingError(ValueError):
     """Raised when an input cannot be safely inspected or verified."""
-
-
-@dataclass(frozen=True)
-class ProcessingReport:
-    """Privacy-minimized inspection results; metadata values are never returned."""
-
-    media_type: str
-    metadata_categories: tuple[str, ...]
-    output_verified: bool
-    width: int | None = None
-    height: int | None = None
-    page_count: int | None = None
-    active_content_removed: bool = False
-    uri_links_removed: int = 0
-
-
-@dataclass(frozen=True)
-class ProcessedFile:
-    """Sanitized bytes and a report that contains field names, not field values."""
-
-    cleaned_bytes: bytes
-    media_type: str
-    report: ProcessingReport
 
 
 def process_file(data: bytes, content_type: str) -> ProcessedFile:
