@@ -60,3 +60,17 @@ python -m pytest tests/test_postgresql_integration.py -q
 ```
 
 La prueba rechaza cualquier host no local o nombre de base distinto. Usá solo una base descartable, nunca datos de producción. Sin la variable explícita, el test queda omitido en la suite habitual.
+
+## Alternativa propuesta: Supabase para pruebas
+
+**Estado: pendiente; no existe una integración de pruebas remotas ni se ha conectado un proyecto Supabase.** La protección local anterior permanece sin cambios. La suite inserta y elimina datos, y las migraciones modifican el esquema: no deben ejecutarse en una base de producción ni en un proyecto compartido.
+
+Para habilitar una prueba remota se necesita, primero, un proyecto Supabase dedicado y descartable, identificado y autorizado explícitamente. La ejecución remota requerirá un mecanismo de prueba independiente con protección verificable del destino, TLS con verificación del servidor y manejo de credenciales fuera del repositorio. Hasta disponer de ese mecanismo, no se debe cambiar el host ni desactivar el guard de las pruebas locales para intentar la conexión. No se deben copiar contraseñas, URL de conexión ni certificados privados al repositorio o a la conversación.
+
+Supabase documenta que la conexión directa gratuita utiliza IPv6, mientras que el pooler compartido en modo sesión admite IPv4; el modo transacción tiene restricciones de sesión. Para verificar TLS con `verify-full`, consulte la documentación del proveedor y su certificado de CA. La selección y la compatibilidad del endpoint concreto siguen pendientes de verificación. Referencias: [conexiones PostgreSQL](https://supabase.com/docs/guides/database/connecting-to-postgres) y [TLS para PostgreSQL](https://supabase.com/docs/guides/platform/ssl-enforcement).
+
+## Comprobación parcial con PGlite
+
+En una prueba temporal y en memoria, `@electric-sql/pglite` 0.5.16 ejecutó el SQL PostgreSQL generado offline por Alembic hasta la revisión `0006_email_verification`. Se observaron siete tablas, el rechazo de correos con mayúsculas o duplicados y la reversión de una transacción explícita con datos sintéticos. Una revisión independiente volvió a ejecutar las comprobaciones y confirmó sus resultados.
+
+Esta prueba no ejecutó el backend ni sus pruebas de integración PostgreSQL, Alembic online, el driver psycopg, conexiones concurrentes o pruebas de carrera. PGlite tiene una conexión interna y no sustituye una comprobación con un servidor PostgreSQL real. La instalación y la base fueron temporales; no se incorporó PGlite como dependencia del proyecto.
