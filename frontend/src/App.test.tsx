@@ -1,9 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
 
 vi.mock('./Scene', () => ({ default: () => <div data-testid="scene" /> }))
-afterEach(cleanup)
+beforeEach(() => {
+  vi.resetAllMocks()
+  authApiMocks.getAuthStatus.mockResolvedValue({ authenticated: false, csrfToken: 'csrf-test' })
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('MetaGuard visual demonstration', () => {
   it('identifies the page as a demonstration without uploading files', () => {
@@ -94,4 +101,103 @@ it('reports database unavailability separately after API liveness succeeds', asy
   expect(await screen.findByText('API disponible; base de datos no disponible.')).toBeTruthy()
   expect(request).toHaveBeenCalledTimes(2)
   vi.unstubAllGlobals()
+})
+const authApiMocks = vi.hoisted(() => ({
+  getAuthStatus: vi.fn(),
+  register: vi.fn(),
+  verifyEmail: vi.fn(),
+  login: vi.fn(),
+  completeMfaLogin: vi.fn(),
+  logout: vi.fn(),
+}))
+
+vi.mock('./authApi', () => authApiMocks)
+
+it('runs registration, email verification, password login, MFA, and logout in memory', async () => {
+  authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: false, csrfToken: 'csrf-status' })
+  authApiMocks.register.mockResolvedValue(undefined)
+  authApiMocks.verifyEmail.mockResolvedValue(undefined)
+  authApiMocks.login.mockResolvedValueOnce({ authenticated: false, mfaRequired: true, csrfToken: 'csrf-mfa' })
+  authApiMocks.completeMfaLogin.mockResolvedValue({ authenticated: true, mfaRequired: false, csrfToken: 'csrf-session' })
+  authApiMocks.logout.mockResolvedValue(undefined)
+  authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: false, csrfToken: 'csrf-after-logout' })
+
+  render(<App />)
+  expect(await screen.findByText('No hay una sesión iniciada.')).toBeTruthy()
+
+  fireEvent.change(screen.getByLabelText('Correo para registrarte'), { target: { value: 'persona@example.test' } })
+  fireEvent.change(screen.getByLabelText('Contraseña nueva'), { target: { value: 'synthetic-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+  expect(await screen.findByText('Si el registro fue aceptado, recibirás instrucciones por correo.')).toBeTruthy()
+  expect(authApiMocks.register).toHaveBeenCalledWith('persona@example.test', 'synthetic-password', 'csrf-status')
+
+  fireEvent.change(screen.getByLabelText('Token de verificación'), { target: { value: 'mail-token' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Verificar correo' }))
+  expect(await screen.findByText('Correo verificado. Ya podés iniciar sesión.')).toBeTruthy()
+  expect(authApiMocks.verifyEmail).toHaveBeenCalledWith('mail-token', 'csrf-status')
+
+  fireEvent.change(screen.getByLabelText('Correo para iniciar sesión'), { target: { value: 'persona@example.test' } })
+  fireEvent.change(screen.getByLabelText('Contraseña de la cuenta'), { target: { value: 'synthetic-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
+  expect(await screen.findByText('Se requiere el segundo factor para continuar.')).toBeTruthy()
+  expect(screen.queryByLabelText('Contraseña de la cuenta')).toBeNull()
+
+  fireEvent.change(screen.getByLabelText('Contraseña para confirmar el segundo factor'), { target: { value: 're-entered-mfa-password' } })
+  fireEvent.change(screen.getByLabelText('Código de autenticación'), { target: { value: '123456' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar segundo factor' }))
+  expect(await screen.findByText('Sesión activa.')).toBeTruthy()
+  expect(screen.queryByLabelText('Contraseña de la cuenta')).toBeNull()
+  expect(authApiMocks.completeMfaLogin).toHaveBeenCalledWith('persona@example.test', 're-entered-mfa-password', '123456', 'csrf-mfa')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+  expect(await screen.findByText('Sesión cerrada.')).toBeTruthy()
+  expect(authApiMocks.logout).toHaveBeenCalledWith('csrf-session')
+})
+
+it('shows unavailable and rate-limit errors without assuming auth is live', async () => {
+  authApiMocks.getAuthStatus.mockRejectedValueOnce({ status: 503 })
+  render(<App />)
+  expect(await screen.findByText('No se pudo consultar el estado de sesión. El servicio de autenticación puede no estar disponible.')).toBeTruthy()
+
+  authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: false, csrfToken: 'csrf' })
+  authApiMocks.register.mockRejectedValueOnce({ status: 429 })
+  authApiMocks.register.mockRejectedValueOnce({ status: 403 })
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar estado de sesión' }))
+  expect(await screen.findByText('No hay una sesión iniciada.')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Correo para registrarte'), { target: { value: 'persona@example.test' } })
+  fireEvent.change(screen.getByLabelText('Contraseña nueva'), { target: { value: 'synthetic-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+  expect(await screen.findByText('Hay demasiados intentos. Esperá un momento antes de volver a probar.')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+  expect(await screen.findByText('No se pudo validar el origen o la protección de seguridad.')).toBeTruthy()
+})
+
+it('requires a fresh password when continuing MFA and clears it after submission', async () => {
+  authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: false, csrfToken: 'csrf-first' })
+  authApiMocks.login.mockResolvedValueOnce({ authenticated: false, mfaRequired: true, csrfToken: 'csrf-challenge' })
+  authApiMocks.completeMfaLogin.mockRejectedValueOnce({ status: 401 })
+
+  render(<App />)
+  expect(await screen.findByText('No hay una sesión iniciada.')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Correo para iniciar sesión'), { target: { value: 'user@example.test' } })
+  fireEvent.change(screen.getByLabelText('Contraseña de la cuenta'), { target: { value: 'old-first-factor-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
+  expect(await screen.findByText('Se requiere el segundo factor para continuar.')).toBeTruthy()
+  expect(screen.queryByLabelText('Contraseña de la cuenta')).toBeNull()
+
+  fireEvent.change(screen.getByLabelText('Código de autenticación'), { target: { value: '123456' } })
+  expect(screen.getByLabelText('Contraseña para confirmar el segundo factor')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar segundo factor' }))
+  expect(authApiMocks.completeMfaLogin).not.toHaveBeenCalled()
+
+  fireEvent.change(screen.getByLabelText('Contraseña para confirmar el segundo factor'), { target: { value: 'fresh-mfa-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar segundo factor' }))
+  expect(await screen.findByText('No se pudieron validar las credenciales o el código.')).toBeTruthy()
+  expect(authApiMocks.completeMfaLogin).toHaveBeenCalledExactlyOnceWith(
+    'user@example.test',
+    'fresh-mfa-password',
+    '123456',
+    'csrf-challenge',
+  )
+  expect((screen.getByLabelText('Contraseña para confirmar el segundo factor') as HTMLInputElement).value).toBe('')
 })

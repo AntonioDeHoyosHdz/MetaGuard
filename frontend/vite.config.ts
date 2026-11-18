@@ -5,5 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   preview: { proxy: {} },
-  server: { proxy: { '^/health/live(?:\\?|$)': 'http://127.0.0.1:8000' } },
+  server: {
+    proxy: {
+      '^/health/live(?:\\?|$)': 'http://127.0.0.1:8000',
+      '^/v1(?:/|\\?|$)': 'http://127.0.0.1:8000',
+    },
+  },
 })

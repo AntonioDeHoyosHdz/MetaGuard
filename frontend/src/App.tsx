@@ -5,11 +5,31 @@ import {
   Shield, ShieldCheck, Sparkles, X,
 } from 'lucide-react'
 import './App.css'
+import {
+  completeMfaLogin,
+  getAuthStatus,
+  login,
+  logout,
+  register,
+  verifyEmail,
+} from './authApi'
 
 const Scene = lazy(() => import('./Scene'))
 
 type Risk = 'Alto' | 'Medio' | 'Bajo'
 type DemoStep = 'carga' | 'analisis' | 'resultado'
+type AuthState = 'loading' | 'anonymous' | 'authenticated' | 'unavailable'
+
+function authErrorMessage(error: unknown): string {
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? Number(error.status)
+    : 0
+  if (status === 429) return 'Hay demasiados intentos. Esperá un momento antes de volver a probar.'
+  if (status === 403) return 'No se pudo validar el origen o la protección de seguridad.'
+  if (status === 401) return 'No se pudieron validar las credenciales o el código.'
+  if (status === 400 || status === 409 || status === 422) return 'No se pudo completar la solicitud con esos datos.'
+  return 'El servicio de autenticación no está disponible. Intentá de nuevo más tarde.'
+}
 
 const demoSteps: { id: DemoStep; number: string; label: string }[] = [
   { id: 'carga', number: '01', label: 'Carga' },
@@ -43,8 +63,145 @@ function App() {
   const [demoStep, setDemoStep] = useState<DemoStep>('carga')
   const [focusDemoStage, setFocusDemoStage] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [authState, setAuthState] = useState<AuthState>('loading')
+  const [csrfToken, setCsrfToken] = useState<string | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
+  const [mfaPending, setMfaPending] = useState(false)
+  const [registrationEmail, setRegistrationEmail] = useState('')
+  const [registrationPassword, setRegistrationPassword] = useState('')
+  const [verificationToken, setVerificationToken] = useState('')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
   const demoStage = useRef<HTMLDivElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
+
+  const refreshAuthStatus = async () => {
+    setAuthState('loading')
+    setAuthError('')
+    try {
+      const status = await getAuthStatus()
+      setCsrfToken(status.csrfToken)
+      setAuthState(status.authenticated ? 'authenticated' : 'anonymous')
+      if (status.authenticated && !status.csrfToken) {
+        setAuthError('La sesión está activa, pero falta la protección CSRF para continuar.')
+      }
+    } catch (error) {
+      setCsrfToken(null)
+      setAuthState('unavailable')
+      setAuthError(authErrorMessage(error))
+    }
+  }
+
+  useEffect(() => {
+    void refreshAuthStatus()
+  }, [])
+
+  const submitRegistration = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!csrfToken) return setAuthError('No hay una protección CSRF disponible. Actualizá el estado de sesión.')
+    setAuthBusy(true)
+    setAuthError('')
+    setAuthNotice('')
+    try {
+      await register(registrationEmail, registrationPassword, csrfToken)
+      setAuthNotice('Si el registro fue aceptado, recibirás instrucciones por correo.')
+      setRegistrationPassword('')
+    } catch (error) {
+      setAuthError(authErrorMessage(error))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const submitEmailVerification = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!csrfToken) return setAuthError('No hay una protección CSRF disponible. Actualizá el estado de sesión.')
+    setAuthBusy(true)
+    setAuthError('')
+    setAuthNotice('')
+    try {
+      await verifyEmail(verificationToken, csrfToken)
+      setVerificationToken('')
+      setAuthNotice('Correo verificado. Ya podés iniciar sesión.')
+    } catch (error) {
+      setAuthError(authErrorMessage(error))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const submitLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!csrfToken) return setAuthError('No hay una protección CSRF disponible. Actualizá el estado de sesión.')
+    setAuthBusy(true)
+    setAuthError('')
+    setAuthNotice('')
+    try {
+      const result = await login(loginEmail, loginPassword, csrfToken)
+      setCsrfToken(result.csrfToken)
+      if (result.mfaRequired) {
+        setLoginPassword('')
+        setMfaPending(true)
+        setAuthNotice('Se requiere el segundo factor para continuar.')
+      } else {
+        setAuthState('authenticated')
+        setLoginPassword('')
+        setAuthNotice('Sesión iniciada.')
+      }
+    } catch (error) {
+      setAuthError(authErrorMessage(error))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const submitMfa = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!csrfToken) return setAuthError('No hay una protección CSRF disponible. Actualizá el estado de sesión.')
+    if (!loginPassword) return setAuthError('Ingresá nuevamente la contraseña para confirmar el segundo factor.')
+    const password = loginPassword
+    setLoginPassword('')
+    setAuthBusy(true)
+    setAuthError('')
+    setAuthNotice('')
+    try {
+      const result = await completeMfaLogin(loginEmail, password, mfaCode, csrfToken)
+      setCsrfToken(result.csrfToken)
+      setAuthState('authenticated')
+      setMfaPending(false)
+      setMfaCode('')
+      setLoginPassword('')
+      setAuthNotice('Sesión iniciada.')
+    } catch (error) {
+      setAuthError(authErrorMessage(error))
+    } finally {
+      setLoginPassword('')
+      setAuthBusy(false)
+    }
+  }
+
+  const submitLogout = async () => {
+    if (!csrfToken) return setAuthError('No hay una protección CSRF disponible. Actualizá el estado de sesión.')
+    setAuthBusy(true)
+    setAuthError('')
+    setAuthNotice('')
+    try {
+      await logout(csrfToken)
+      setAuthState('anonymous')
+      setCsrfToken(null)
+      setLoginPassword('')
+      setMfaPending(false)
+      setAuthNotice('Sesión cerrada.')
+      await refreshAuthStatus()
+    } catch (error) {
+      setAuthError(authErrorMessage(error))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (focusDemoStage) {
@@ -117,6 +274,7 @@ function App() {
           <a href="#inicio" onClick={() => setMenuOpen(false)}>Inicio</a>
           <a href="#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</a>
           <a href="#demostracion" onClick={() => setMenuOpen(false)}>Demostración</a>
+          <a href="#cuenta" onClick={() => setMenuOpen(false)}>Cuenta</a>
           <a href="#privacidad" onClick={() => setMenuOpen(false)}>Privacidad</a>
         </nav>
         <a className="nav-cta" href="#demostracion">Explorar <ArrowUpRight size={16} /></a>
@@ -171,6 +329,82 @@ function App() {
             {apiStatus === 'unavailable' && 'No se pudo comprobar la API.'}
           </span>
         </div>
+        </section>
+
+        <section className="auth-section section-wrap" id="cuenta" aria-labelledby="auth-title">
+          <div className="auth-heading">
+            <div>
+              <span className="section-kicker"><span>✳</span> ACCESO SEGURO</span>
+              <h2 id="auth-title">Tu cuenta, bajo<br /><em>tu control.</em></h2>
+            </div>
+            <p>El acceso usa cookies seguras y protección CSRF. Esta interfaz no guarda credenciales ni tokens en el almacenamiento del navegador.</p>
+          </div>
+          <div className="auth-status" role="status" aria-live="polite">
+            {authState === 'loading' && 'Consultando el estado de sesión…'}
+            {authState === 'anonymous' && 'No hay una sesión iniciada.'}
+            {authState === 'authenticated' && 'Sesión activa.'}
+            {authState === 'unavailable' && 'No se pudo consultar el estado de sesión. El servicio de autenticación puede no estar disponible.'}
+          </div>
+          {authError && <p className="auth-message auth-error" role="alert">{authError}</p>}
+          {authNotice && <p className="auth-message auth-notice" role="status">{authNotice}</p>}
+          <p className="auth-runtime-note">El registro y el acceso dependen de servicios de backend configurados; no se afirma que la autenticación pública esté activa.</p>
+
+          {authState === 'unavailable' && (
+            <button className="auth-button auth-secondary" type="button" onClick={() => void refreshAuthStatus()} disabled={authBusy}>
+              Reintentar estado de sesión
+            </button>
+          )}
+
+          {authState === 'authenticated' && (
+            <div className="auth-session">
+              {csrfToken
+                ? <button className="auth-button" type="button" onClick={() => void submitLogout()} disabled={authBusy}>{authBusy ? 'Cerrando sesión…' : 'Cerrar sesión'}</button>
+                : <p role="alert">La sesión está activa, pero falta la protección CSRF para cerrar sesión con seguridad.</p>}
+            </div>
+          )}
+
+          {authState === 'anonymous' && (
+            <div className="auth-grid">
+              <form className="auth-card" onSubmit={submitRegistration}>
+                <h3>Crear cuenta</h3>
+                <label htmlFor="register-email">Correo para registrarte</label>
+                <input id="register-email" type="email" autoComplete="email" required maxLength={254} value={registrationEmail} onChange={(event) => setRegistrationEmail(event.target.value)} />
+                <label htmlFor="register-password">Contraseña nueva</label>
+                <input id="register-password" type="password" autoComplete="new-password" required minLength={15} maxLength={1024} value={registrationPassword} onChange={(event) => setRegistrationPassword(event.target.value)} />
+                <button className="auth-button" type="submit" disabled={authBusy || !csrfToken}>{authBusy ? 'Enviando…' : 'Crear cuenta'}</button>
+              </form>
+
+              <form className="auth-card" onSubmit={submitEmailVerification}>
+                <h3>Verificar correo</h3>
+                <p>Ingresá el token recibido por correo. El token se mantiene solo en este formulario.</p>
+                <label htmlFor="verify-token">Token de verificación</label>
+                <input id="verify-token" type="text" autoComplete="one-time-code" required maxLength={128} value={verificationToken} onChange={(event) => setVerificationToken(event.target.value)} />
+                <button className="auth-button auth-secondary" type="submit" disabled={authBusy || !csrfToken}>{authBusy ? 'Verificando…' : 'Verificar correo'}</button>
+              </form>
+
+              {!mfaPending ? (
+                <form className="auth-card" onSubmit={submitLogin}>
+                  <h3>Iniciar sesión</h3>
+                  <label htmlFor="login-email">Correo para iniciar sesión</label>
+                  <input id="login-email" type="email" autoComplete="username" required maxLength={254} value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} />
+                  <label htmlFor="login-password">Contraseña de la cuenta</label>
+                  <input id="login-password" type="password" autoComplete="current-password" required maxLength={1024} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
+                  <button className="auth-button" type="submit" disabled={authBusy || !csrfToken}>{authBusy ? 'Validando…' : 'Iniciar sesión'}</button>
+                </form>
+              ) : (
+                <form className="auth-card" onSubmit={submitMfa}>
+                  <h3>Segundo factor</h3>
+                  <p>Ingresá el código de autenticación para completar el acceso.</p>
+                  <label htmlFor="mfa-password">Contraseña para confirmar el segundo factor</label>
+                  <input id="mfa-password" type="password" autoComplete="current-password" required maxLength={1024} value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
+                  <label htmlFor="mfa-code">Código de autenticación</label>
+                  <input id="mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} />
+                  <button className="auth-button" type="submit" disabled={authBusy || !csrfToken || !loginPassword}>{authBusy ? 'Validando…' : 'Confirmar segundo factor'}</button>
+                  <button className="auth-button auth-secondary" type="button" onClick={() => { setMfaPending(false); setMfaCode(''); setLoginPassword('') }} disabled={authBusy}>Cancelar</button>
+                </form>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="demo-section section-wrap" id="demostracion" aria-labelledby="demo-title">
