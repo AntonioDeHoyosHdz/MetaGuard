@@ -53,9 +53,14 @@ def _token_digest(token: str) -> str | None:
 
 
 def _valid_configuration(signing_key: str, issuer: str, audience: str) -> bool:
+    if not isinstance(signing_key, str):
+        return False
+    try:
+        key_length = len(signing_key.encode("utf-8"))
+    except UnicodeEncodeError:
+        return False
     return (
-        isinstance(signing_key, str)
-        and bool(signing_key)
+        key_length >= 32
         and isinstance(issuer, str)
         and bool(issuer)
         and isinstance(audience, str)

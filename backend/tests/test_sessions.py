@@ -105,6 +105,77 @@ def test_issue_session_returns_independent_tokens_and_persists_only_digests(sess
     assert _active(session, issued.session_token, now=now) is not None
 
 
+def test_jwt_signing_key_requires_at_least_32_utf8_bytes(session):
+    now = datetime(2026, 11, 17, tzinfo=UTC)
+    expires_at = now + timedelta(hours=1)
+    short_key = "k" * 31
+    valid_key = "k" * 32
+    issued = _issue(session, "account-1", now=now, expires_at=expires_at)
+
+    for weak_key in (short_key, "", "\ud800"):
+        assert (
+            issue_session(
+                session,
+                "account-1",
+                signing_key=weak_key,
+                issuer=ISSUER,
+                audience=AUDIENCE,
+                now=now,
+                expires_at=expires_at,
+            )
+            is None
+        )
+        assert (
+            get_active_session(
+                session,
+                issued.session_token,
+                signing_key=weak_key,
+                issuer=ISSUER,
+                audience=AUDIENCE,
+                now=now,
+            )
+            is None
+        )
+        assert not revoke_session(
+            session,
+            issued.session_token,
+            signing_key=weak_key,
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            now=now,
+        )
+
+    accepted = issue_session(
+        session,
+        "account-1",
+        signing_key=valid_key,
+        issuer=ISSUER,
+        audience=AUDIENCE,
+        now=now,
+        expires_at=expires_at,
+    )
+    assert accepted is not None
+    assert (
+        get_active_session(
+            session,
+            accepted.session_token,
+            signing_key=valid_key,
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            now=now,
+        )
+        is not None
+    )
+    assert revoke_session(
+        session,
+        accepted.session_token,
+        signing_key=valid_key,
+        issuer=ISSUER,
+        audience=AUDIENCE,
+        now=now,
+    )
+
+
 def test_active_session_and_csrf_validation_are_bound_to_issued_session(session):
     now = datetime(2026, 11, 17, tzinfo=UTC)
     issued = _issue(session, "account-1", now=now, expires_at=now + timedelta(hours=1))
