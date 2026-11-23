@@ -12,15 +12,43 @@ from typing import Protocol
 import jwt
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask, BackgroundTasks
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 
-from metaguard_api.account_credentials import is_approved_password_hash
-from metaguard_api.email_verification import consume_email_verification
+from metaguard_api.account_credentials import is_approved_password_hash, verify_password
+from metaguard_api.account_security_events import (
+    AccountSecurityEventKind,
+    account_event_task,
+    record_account_event,
+    save_account_event,
+)
+from metaguard_api.accounts import Account
+from metaguard_api.email_verification import (
+    consume_email_verification,
+    prepare_email_verification_resend,
+)
 from metaguard_api.first_factor import (
     FirstFactorStatus,
     InvalidDummyPasswordHash,
+    _valid_email,
     check_first_factor,
+)
+from metaguard_api.login_email_challenge import (
+    LoginEmailProof,
+    consume_login_email_challenge,
+    has_active_login_email_challenge,
+    prepare_login_email_challenge,
+)
+from metaguard_api.login_risk import (
+    LoginRisk,
+    assess_login_risk,
+    login_address_digest,
+    record_login_failure,
+    record_login_success,
 )
 from metaguard_api.registration import (
     InvalidRegistrationInput,
@@ -28,7 +56,9 @@ from metaguard_api.registration import (
 )
 from metaguard_api.registration_verification import register_account_with_email_verification
 from metaguard_api.second_factor import check_second_factor
+from metaguard_api.security_alerts import enqueue_security_alert
 from metaguard_api.sessions import (
+    IssuedSession,
     consume_mfa_login_challenge,
     create_mfa_login_challenge,
     get_active_session,
@@ -43,6 +73,7 @@ CSRF_COOKIE = "__Host-metaguard_csrf"
 MFA_COOKIE = "__Host-metaguard_mfa"
 CSRF_HEADER = "X-CSRF-Token"
 _CSRF_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+_AUTH_BODY_LIMIT = 8192  # Fits bounded fields even when all characters use JSON escapes.
 
 
 class RateLimiter(Protocol):
@@ -56,9 +87,13 @@ class SessionFactory(Protocol):
 
 
 class EmailSender(Protocol):
-    """Injected delivery boundary; verification tokens are passed only here."""
+    """Injected delivery boundary for short-lived authentication email codes."""
 
     def send_verification(self, email: str, token: str) -> None: ...
+
+    def send_password_reset(self, email: str, code: str) -> None: ...
+
+    def send_login_challenge(self, email: str, code: str) -> None: ...
 
 
 class _RejectAuthentication(Exception):
@@ -89,6 +124,7 @@ class AuthRuntime:
     )
     email_sender: EmailSender | None = field(default=None, repr=False, compare=False)
     email_verification_lifetime: timedelta | None = None
+    login_risk_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +140,10 @@ class LoginRequest(BaseModel):
 
     email: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=1024)
+
+
+class LoginEmailRequest(LoginRequest):
+    code: str = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
 
 
 class MfaLoginRequest(BaseModel):
@@ -127,11 +167,12 @@ class EmailVerificationRequest(BaseModel):
     token: str = Field(min_length=1, max_length=128)
 
 
-def _error(status: int, code: str, message: str):
+def _error(status: int, code: str, message: str, *, background: BackgroundTask | None = None):
     return JSONResponse(
         status_code=status,
         content={"error": {"code": code, "message": message}},
         headers={"Cache-Control": "no-store"},
+        background=background,
     )
 
 
@@ -162,17 +203,23 @@ def _runtime_ready(runtime: AuthRuntime | None) -> bool:
     )
 
 
-def _registration_runtime_ready(runtime: AuthRuntime | None) -> bool:
+def _email_verification_runtime_ready(runtime: AuthRuntime | None) -> bool:
     return (
         _runtime_ready(runtime)
+        and callable(getattr(runtime.email_sender, "send_verification", None))
+        and isinstance(runtime.email_verification_lifetime, timedelta)
+        and runtime.email_verification_lifetime.total_seconds() >= 1
+    )
+
+
+def _registration_runtime_ready(runtime: AuthRuntime | None) -> bool:
+    return (
+        _email_verification_runtime_ready(runtime)
         and isinstance(runtime.common_passwords, frozenset)
         and bool(runtime.common_passwords)
         and all(isinstance(value, str) and value for value in runtime.common_passwords)
         and callable(runtime.password_lookup)
         and callable(runtime.report_password_outage)
-        and callable(getattr(runtime.email_sender, "send_verification", None))
-        and isinstance(runtime.email_verification_lifetime, timedelta)
-        and runtime.email_verification_lifetime.total_seconds() >= 1
     )
 
 
@@ -211,6 +258,7 @@ def authenticate_owner(
     *,
     ip_rate_action: str,
     account_rate_action: str,
+    audit_rate_limit: bool = True,
 ) -> tuple[AuthenticatedOwner | None, JSONResponse | None]:
     """Validate the established Origin/CSRF, session, and injected rate-limit boundary."""
     if not _runtime_ready(runtime):
@@ -253,7 +301,17 @@ def authenticate_owner(
             if account_allowed is None:
                 return None, _error(503, "auth_unavailable", "Authentication is unavailable")
             if not account_allowed:
-                return None, _error(429, "rate_limited", "Too many requests")
+                background = (
+                    account_event_task(
+                        runtime.session_factory.begin,
+                        active.account_id,
+                        AccountSecurityEventKind.RATE_LIMIT_EXCEEDED,
+                        now,
+                    )
+                    if audit_rate_limit
+                    else None
+                )
+                return None, _error(429, "rate_limited", "Too many requests", background=background)
             return AuthenticatedOwner(active.account_id, now), None
     except Exception:
         return None, _error(503, "auth_unavailable", "Authentication is unavailable")
@@ -385,6 +443,119 @@ def _set_session_cookies(
     _clear_cookie(response, MFA_COOKIE, settings)
 
 
+def _session_response(issued: IssuedSession, runtime: AuthRuntime, settings: Settings):
+    response = JSONResponse(
+        {"authenticated": True, "csrf_token": issued.csrf_token},
+        headers={"Cache-Control": "no-store"},
+    )
+    _set_session_cookies(response, issued.session_token, issued.csrf_token, runtime, settings)
+    return response
+
+
+def _lock_mfa_login_account(session: Session, account_id: str) -> str | None:
+    if session.get_bind().dialect.name == "sqlite":
+        # SQLite has no row-level FOR UPDATE; issue a no-op write to serialize mutations.
+        return session.scalar(
+            update(Account)
+            .where(Account.id == account_id)
+            .values(password_hash=Account.password_hash)
+            .returning(Account.email)
+        )
+    return session.scalar(select(Account.email).where(Account.id == account_id).with_for_update())
+
+
+def _lock_login_account(session: Session, email: str, *, serialize_sqlite: bool) -> Account | None:
+    if not _valid_email(email):
+        return None
+    if serialize_sqlite and session.get_bind().dialect.name == "sqlite":
+        return session.scalar(
+            update(Account)
+            .where(Account.email == email)
+            .values(password_hash=Account.password_hash)
+            .returning(Account)
+        )
+    return session.scalar(select(Account).where(Account.email == email).with_for_update())
+
+
+def _login_address(runtime: AuthRuntime, request: Request, account_id: str) -> str | None:
+    if not runtime.login_risk_enabled:
+        return None
+    return login_address_digest(account_id, _client_ip(request), runtime.signing_key)
+
+
+def _login_risk(
+    session: Session,
+    runtime: AuthRuntime,
+    account_id: str | None,
+    address: str | None,
+    now: datetime,
+) -> LoginRisk:
+    if not runtime.login_risk_enabled or account_id is None:
+        return LoginRisk(None, False)
+    return assess_login_risk(session, account_id, address, now=now)
+
+
+def _record_auth_failure(
+    session: Session, account_id: str, address: str | None, before: LoginRisk, now: datetime
+) -> None:
+    after = record_login_failure(session, account_id, address, now=now)
+    if (before.locked_until is None and after.locked_until is not None) or (
+        not before.step_up and after.step_up
+    ):
+        enqueue_security_alert(session, account_id, now=now)
+
+
+def _record_auth_success(
+    session: Session, account_id: str, address: str | None, now: datetime
+) -> None:
+    if record_login_success(session, account_id, address, now=now):
+        save_account_event(session, account_id, AccountSecurityEventKind.NEW_IP_LOGIN, now=now)
+        enqueue_security_alert(session, account_id, now=now)
+
+
+def _send_login_email(send: Callable[[str, str], None], email: str, code: str) -> None:
+    try:
+        send(email, code)
+    except Exception:
+        # Transport diagnostics can include a recipient or a credential proof.
+        pass
+
+
+async def _read_auth_payload[T: BaseModel](request: Request, model: type[T]) -> T | None:
+    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0]
+    if content_type.strip().lower() != "application/json":
+        return None
+    body = bytearray()
+    try:
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > _AUTH_BODY_LIMIT:
+                return None
+            body.extend(chunk)
+        return model.model_validate_json(body)
+    except (ClientDisconnect, ValidationError):
+        return None
+
+
+def _resend_if_eligible(runtime: AuthRuntime, email: str, password: str, now: datetime) -> None:
+    try:
+        with runtime.session_factory.begin() as session:
+            token = prepare_email_verification_resend(
+                session,
+                email,
+                password,
+                dummy_password_hash=runtime.dummy_password_hash,
+                now=now,
+                expires_at=now + runtime.email_verification_lifetime,
+            )
+            if token is not None:
+                session.flush()
+                runtime.email_sender.send_verification(email, token)
+    except Exception:
+        # The transaction rolls back, retaining the prior code. Delivery cannot be
+        # atomic with commit; never expose errors specific to an eligible account.
+        pass
+
+
 def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRouter:
     router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -405,26 +576,63 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
         email = payload.email.strip().lower()
         try:
             with runtime.session_factory.begin() as session:
-                _, token = register_account_with_email_verification(
-                    session,
-                    email,
-                    payload.password,
-                    common_passwords=runtime.common_passwords,
-                    lookup=runtime.password_lookup,
-                    report_outage=runtime.report_password_outage,
-                    now=now,
-                    expires_at=now + runtime.email_verification_lifetime,
-                )
-                runtime.email_sender.send_verification(email, token)
-            return JSONResponse(
-                {"registered": True}, status_code=202, headers={"Cache-Control": "no-store"}
-            )
-        except RegistrationConflict:
-            return _error(409, "registration_unavailable", "Registration could not be completed")
+                try:
+                    _, token = register_account_with_email_verification(
+                        session,
+                        email,
+                        payload.password,
+                        common_passwords=runtime.common_passwords,
+                        lookup=runtime.password_lookup,
+                        report_outage=runtime.report_password_outage,
+                        now=now,
+                        expires_at=now + runtime.email_verification_lifetime,
+                    )
+                except RegistrationConflict:
+                    # The email already exists. Leave the account and its token untouched.
+                    pass
+                else:
+                    runtime.email_sender.send_verification(email, token)
         except InvalidRegistrationInput:
             return _error(400, "invalid_registration", "Registration could not be completed")
         except Exception:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
+        return JSONResponse(
+            {"registered": True}, status_code=202, headers={"Cache-Control": "no-store"}
+        )
+
+    @router.post(
+        "/resend-verification",
+        status_code=202,
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {"schema": RegistrationRequest.model_json_schema()}
+                },
+            }
+        },
+    )
+    async def resend_verification(request: Request):
+        if not _email_verification_runtime_ready(runtime):
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not _origin_and_csrf_valid(request, settings):
+            return _error(403, "origin_or_csrf", "Origin or CSRF validation failed")
+        payload = await _read_auth_payload(request, RegistrationRequest)
+        if payload is None:
+            return _error(400, "invalid_request", "Invalid request")
+        email = payload.email.strip().lower()
+        allowed = _allow(runtime, request, "auth_resend_verification", email)
+        if allowed is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests")
+        now = _current_time(runtime)
+        if now is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        await run_in_threadpool(_resend_if_eligible, runtime, email, payload.password, now)
+        return JSONResponse(
+            {"requested": True}, status_code=202, headers={"Cache-Control": "no-store"}
+        )
 
     @router.post("/verify-email")
     def verify_email(payload: EmailVerificationRequest, request: Request):
@@ -525,12 +733,44 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
 
         try:
             with runtime.session_factory.begin() as session:
+                # Serialize risk, enrollment, and any session issuance on the owner row.
+                owner = _lock_login_account(
+                    session, payload.email, serialize_sqlite=runtime.login_risk_enabled
+                )
+                locked_id = owner.id if owner is not None else None
+                address = None
+                if runtime.login_risk_enabled and locked_id is not None:
+                    now = _current_time(runtime)
+                    if now is None:
+                        raise RuntimeError("Authentication clock is unavailable")
+                    address = _login_address(runtime, request, locked_id)
+                risk = _login_risk(session, runtime, locked_id, address, now)
+                if risk.locked_until is not None:
+                    verify_password(payload.password, runtime.dummy_password_hash)
+                    return _error(401, "unauthorized", "Invalid credentials")
+                audit = BackgroundTasks()
+
+                def on_bad_password(account_id: str) -> None:
+                    if account_id == locked_id:
+                        if runtime.login_risk_enabled:
+                            _record_auth_failure(session, account_id, address, risk, now)
+                        audit.add_task(
+                            record_account_event,
+                            runtime.session_factory.begin,
+                            account_id,
+                            AccountSecurityEventKind.LOGIN_FAILED,
+                            now,
+                        )
+
                 first = check_first_factor(
                     session,
                     payload.email,
                     payload.password,
                     dummy_password_hash=runtime.dummy_password_hash,
+                    on_bad_password=on_bad_password,
                 )
+                if first.account_id is None or first.account_id != locked_id:
+                    return _error(401, "unauthorized", "Invalid credentials", background=audit)
                 if first.status is FirstFactorStatus.MFA_REQUIRED and first.account_id:
                     csrf_token = request.cookies[CSRF_COOKIE]
                     challenge = _issue_mfa_challenge(
@@ -552,6 +792,30 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
                     return response
                 if first.status is not FirstFactorStatus.PASSWORD_VERIFIED or not first.account_id:
                     return _error(401, "unauthorized", "Invalid credentials")
+                if risk.step_up:
+                    send = getattr(runtime.email_sender, "send_login_challenge", None)
+                    if address is None or owner is None or not callable(send):
+                        return _error(503, "auth_unavailable", "Authentication is unavailable")
+                    csrf_token = request.cookies[CSRF_COOKIE]
+                    prepared = prepare_login_email_challenge(
+                        session, owner, csrf_token, address, now=now
+                    )
+                    if prepared is None:
+                        return _error(429, "rate_limited", "Too many requests")
+                    background = (
+                        BackgroundTask(_send_login_email, send, owner.email, prepared.code)
+                        if prepared.code is not None
+                        else None
+                    )
+                    return JSONResponse(
+                        {
+                            "authenticated": False,
+                            "email_challenge_required": True,
+                            "csrf_token": csrf_token,
+                        },
+                        headers={"Cache-Control": "no-store"},
+                        background=background,
+                    )
                 issued = issue_session(
                     session,
                     first.account_id,
@@ -563,16 +827,121 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
                 )
                 if issued is None:
                     return _error(401, "unauthorized", "Invalid credentials")
-            response = JSONResponse(
-                {"authenticated": True, "csrf_token": issued.csrf_token},
-                headers={"Cache-Control": "no-store"},
-            )
-            _set_session_cookies(
-                response, issued.session_token, issued.csrf_token, runtime, settings
-            )
-            return response
+                if runtime.login_risk_enabled:
+                    _record_auth_success(session, first.account_id, address, now)
+            return _session_response(issued, runtime, settings)
         except InvalidDummyPasswordHash:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
+        except Exception:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+
+    @router.post("/login/email")
+    async def login_email(request: Request):
+        if not _runtime_ready(runtime):
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not _origin_and_csrf_valid(request, settings):
+            return _error(403, "origin_or_csrf", "Origin or CSRF validation failed")
+        if not runtime.login_risk_enabled:
+            return _error(401, "unauthorized", "Invalid credentials")
+        allowed = _allow(runtime, request, "auth_login_email_ip", "anonymous")
+        if allowed is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests")
+        payload = await _read_auth_payload(request, LoginEmailRequest)
+        if payload is None:
+            return _error(401, "unauthorized", "Invalid credentials")
+
+        return await run_in_threadpool(_finish_email_login, payload, request)
+
+    def _finish_email_login(payload: LoginEmailRequest, request: Request):
+        allowed = _allow(runtime, request, "auth_login_email_pair", payload.email)
+        if allowed is None:
+            return _error(503, "auth_unavailable", "Authentication is unavailable")
+        if not allowed:
+            return _error(429, "rate_limited", "Too many requests")
+        try:
+            with runtime.session_factory.begin() as session:
+                owner = _lock_login_account(session, payload.email, serialize_sqlite=True)
+                now = _current_time(runtime)
+                if now is None:
+                    raise RuntimeError("Authentication clock is unavailable")
+                address = _login_address(runtime, request, owner.id) if owner is not None else None
+                if owner is None or address is None:
+                    verify_password(payload.password, runtime.dummy_password_hash)
+                    return _error(401, "unauthorized", "Invalid credentials")
+                risk = _login_risk(session, runtime, owner.id, address, now)
+                if risk.locked_until is not None:
+                    verify_password(payload.password, runtime.dummy_password_hash)
+                    return _error(401, "unauthorized", "Invalid credentials")
+                password_rejected = False
+
+                def on_bad_password(account_id: str) -> None:
+                    nonlocal password_rejected
+                    password_rejected = account_id == owner.id
+
+                first = check_first_factor(
+                    session,
+                    payload.email,
+                    payload.password,
+                    dummy_password_hash=runtime.dummy_password_hash,
+                    on_bad_password=on_bad_password,
+                )
+                password_verified = (
+                    first.status is FirstFactorStatus.PASSWORD_VERIFIED
+                    and first.account_id == owner.id
+                )
+                if not (password_verified or password_rejected):
+                    return _error(401, "unauthorized", "Invalid credentials")
+                # Password verification may cross the proof's expiry boundary.
+                now = _current_time(runtime)
+                if now is None:
+                    raise RuntimeError("Authentication clock is unavailable")
+                csrf_token = request.cookies[CSRF_COOKIE]
+                failed_kind = None
+                if password_rejected:
+                    if not has_active_login_email_challenge(
+                        session, owner, csrf_token, address, now=now
+                    ):
+                        return _error(401, "unauthorized", "Invalid credentials")
+                    failed_kind = AccountSecurityEventKind.LOGIN_FAILED
+                else:
+                    proof = consume_login_email_challenge(
+                        session, owner, csrf_token, address, payload.code, now=now
+                    )
+                    if proof is LoginEmailProof.REJECTED:
+                        return _error(401, "unauthorized", "Invalid credentials")
+                    if proof is LoginEmailProof.INVALID_CODE:
+                        failed_kind = AccountSecurityEventKind.MFA_FAILED
+                if failed_kind is not None:
+                    risk = _login_risk(session, runtime, owner.id, address, now)
+                    _record_auth_failure(session, owner.id, address, risk, now)
+                    return _error(
+                        401,
+                        "unauthorized",
+                        "Invalid credentials",
+                        background=account_event_task(
+                            runtime.session_factory.begin,
+                            owner.id,
+                            failed_kind,
+                            now,
+                        ),
+                    )
+                issued = issue_session(
+                    session,
+                    owner.id,
+                    signing_key=runtime.signing_key,
+                    issuer=runtime.issuer,
+                    audience=runtime.audience,
+                    now=now,
+                    expires_at=now + runtime.session_lifetime,
+                )
+                if issued is None:
+                    raise _RejectAuthentication
+                _record_auth_success(session, owner.id, address, now)
+            return _session_response(issued, runtime, settings)
+        except _RejectAuthentication:
+            return _error(401, "unauthorized", "Invalid credentials")
         except Exception:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
 
@@ -594,54 +963,90 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
         account_id = _decode_mfa_challenge(runtime, challenge_token, now)
         if account_id is None:
             return _error(401, "unauthorized", "Invalid credentials")
-        allowed = _allow(runtime, request, "auth_login_mfa_account", account_id)
+        action = "auth_login_mfa_pair" if runtime.login_risk_enabled else "auth_login_mfa_account"
+        allowed = _allow(runtime, request, action, account_id)
         if allowed is None:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
         if not allowed:
             return _error(429, "rate_limited", "Too many requests")
+        audit = BackgroundTasks()
         try:
             with runtime.session_factory.begin() as session:
-                consumed_account_id = consume_mfa_login_challenge(
-                    session,
-                    challenge_token,
-                    request.cookies.get(CSRF_COOKIE, ""),
-                    now=now,
-                )
-                if consumed_account_id != account_id:
+                # Match account lifecycle lock order before consuming the one-use challenge.
+                locked_email = _lock_mfa_login_account(session, account_id)
+                if locked_email is None or locked_email != payload.email:
+                    verify_password(payload.password, runtime.dummy_password_hash)
                     raise _RejectAuthentication
-                verified_account_id = check_second_factor(
-                    session,
-                    payload.email,
-                    payload.password,
-                    payload.code,
-                    dummy_password_hash=runtime.dummy_password_hash,
-                    key=runtime.totp_encryption_key,
-                    key_version=runtime.totp_key_version,
-                    now=int(now.timestamp()),
-                )
-                if verified_account_id != account_id:
+                now = _current_time(runtime)
+                if now is None:
+                    raise RuntimeError("Authentication clock is unavailable")
+                address = _login_address(runtime, request, account_id)
+                risk = _login_risk(session, runtime, account_id, address, now)
+                if risk.locked_until is not None:
+                    verify_password(payload.password, runtime.dummy_password_hash)
                     raise _RejectAuthentication
-                issued = issue_session(
-                    session,
-                    account_id,
-                    signing_key=runtime.signing_key,
-                    issuer=runtime.issuer,
-                    audience=runtime.audience,
-                    now=now,
-                    expires_at=now + runtime.session_lifetime,
-                )
-                if issued is None:
-                    raise _RejectAuthentication
-            response = JSONResponse(
-                {"authenticated": True, "csrf_token": issued.csrf_token},
-                headers={"Cache-Control": "no-store"},
-            )
-            _set_session_cookies(
-                response, issued.session_token, issued.csrf_token, runtime, settings
-            )
-            return response
+                failed_kind = None
+
+                def on_rejected(kind: AccountSecurityEventKind) -> None:
+                    nonlocal failed_kind
+                    failed_kind = kind
+                    audit.add_task(
+                        record_account_event,
+                        runtime.session_factory.begin,
+                        account_id,
+                        kind,
+                        now,
+                    )
+
+                # Roll back provisional challenge/TOTP updates on rejection, then
+                # commit any genuine failure against the still-locked account.
+                try:
+                    with session.begin_nested():
+                        consumed_account_id = consume_mfa_login_challenge(
+                            session, challenge_token, request.cookies[CSRF_COOKIE], now=now
+                        )
+                        if consumed_account_id != account_id:
+                            raise _RejectAuthentication
+                        verified_account_id = check_second_factor(
+                            session,
+                            payload.email,
+                            payload.password,
+                            payload.code,
+                            dummy_password_hash=runtime.dummy_password_hash,
+                            key=runtime.totp_encryption_key,
+                            key_version=runtime.totp_key_version,
+                            now=int(now.timestamp()),
+                            on_mfa_rejected=lambda: on_rejected(
+                                AccountSecurityEventKind.MFA_FAILED
+                            ),
+                            on_bad_password=(
+                                lambda _owner: on_rejected(AccountSecurityEventKind.LOGIN_FAILED)
+                            )
+                            if runtime.login_risk_enabled
+                            else None,
+                        )
+                        if verified_account_id != account_id:
+                            raise _RejectAuthentication
+                        issued = issue_session(
+                            session,
+                            account_id,
+                            signing_key=runtime.signing_key,
+                            issuer=runtime.issuer,
+                            audience=runtime.audience,
+                            now=now,
+                            expires_at=now + runtime.session_lifetime,
+                        )
+                        if issued is None:
+                            raise _RejectAuthentication
+                except _RejectAuthentication:
+                    if runtime.login_risk_enabled and failed_kind is not None:
+                        _record_auth_failure(session, account_id, address, risk, now)
+                    return _error(401, "unauthorized", "Invalid credentials", background=audit)
+                if runtime.login_risk_enabled:
+                    _record_auth_success(session, account_id, address, now)
+            return _session_response(issued, runtime, settings)
         except _RejectAuthentication:
-            return _error(401, "unauthorized", "Invalid credentials")
+            return _error(401, "unauthorized", "Invalid credentials", background=audit)
         except Exception:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
 
@@ -677,7 +1082,17 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
                 if account_allowed is None:
                     return _error(503, "auth_unavailable", "Authentication is unavailable")
                 if not account_allowed:
-                    return _error(429, "rate_limited", "Too many requests")
+                    return _error(
+                        429,
+                        "rate_limited",
+                        "Too many requests",
+                        background=account_event_task(
+                            runtime.session_factory.begin,
+                            active.account_id,
+                            AccountSecurityEventKind.RATE_LIMIT_EXCEEDED,
+                            now,
+                        ),
+                    )
                 revoked = revoke_session(
                     session,
                     session_token,

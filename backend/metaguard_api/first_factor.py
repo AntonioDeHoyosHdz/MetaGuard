@@ -1,12 +1,17 @@
 """Private first-factor check; it does not create an authenticated session."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from metaguard_api.account_credentials import is_approved_password_hash, verify_password
+from metaguard_api.account_credentials import (
+    _valid_password,
+    is_approved_password_hash,
+    verify_password,
+)
 from metaguard_api.account_totp import AccountTotp
 from metaguard_api.accounts import Account
 
@@ -53,6 +58,7 @@ def check_first_factor(
     password: str,
     *,
     dummy_password_hash: str,
+    on_bad_password: Callable[[str], None] | None = None,
 ) -> FirstFactorResult:
     """Check credentials without committing, issuing a session, or consuming MFA.
 
@@ -78,7 +84,15 @@ def check_first_factor(
         return FirstFactorResult(FirstFactorStatus.REJECTED)
 
     account_id, password_hash, email_verified_at = account
-    if not verify_password(password, password_hash) or email_verified_at is None:
+    password_verified = verify_password(password, password_hash)
+    if not password_verified or email_verified_at is None:
+        if (
+            on_bad_password is not None
+            and not password_verified
+            and email_verified_at is not None
+            and _valid_password(password)
+        ):
+            on_bad_password(account_id)
         return FirstFactorResult(FirstFactorStatus.REJECTED)
 
     with session.no_autoflush:

@@ -22,6 +22,7 @@ def screen_password(
     common_passwords: frozenset[str],
     lookup: Callable[[str, dict[str, str]], str],
     report_outage: Callable[[str], None],
+    on_compromised: Callable[[], None] | None = None,
 ) -> PasswordScreeningResult:
     """Check a caller-provided blocklist and HIBP range; report reduced fallback.
 
@@ -51,13 +52,16 @@ def screen_password(
         return response
 
     try:
-        if is_compromised(password, checked_lookup):
-            return PasswordScreeningResult.REJECTED
+        compromised = is_compromised(password, checked_lookup)
     except (RangeServiceUnavailable, OSError):
         report_outage("password_breach_check_unavailable")
         return PasswordScreeningResult.ACCEPTED_REDUCED
     except (InvalidRangeResponse, ValueError):
         # An invalid response may include a genuine match; never accept it via fallback.
         report_outage("password_breach_check_unavailable")
+        return PasswordScreeningResult.REJECTED
+    if compromised:
+        if on_compromised is not None:
+            on_compromised()
         return PasswordScreeningResult.REJECTED
     return PasswordScreeningResult.ACCEPTED

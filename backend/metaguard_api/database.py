@@ -42,7 +42,10 @@ class Database:
 
 
 def create_database(
-    settings: DatabaseSettings, *, connect_timeout_seconds: int | None = None
+    settings: DatabaseSettings,
+    *,
+    connect_timeout_seconds: int | None = None,
+    tls_root_cert: Path | None = None,
 ) -> Database:
     password = SecretStore(settings.secret_dir).read_text(SecretName.POSTGRES_PASSWORD)
     url = URL.create(
@@ -53,7 +56,13 @@ def create_database(
         port=settings.port,
         database=settings.name,
     )
-    connect_args = {"connect_timeout": connect_timeout_seconds} if connect_timeout_seconds else {}
+    connect_args: dict[str, int | str] = {}
+    if connect_timeout_seconds:
+        connect_args["connect_timeout"] = connect_timeout_seconds
+    if tls_root_cert is not None:
+        connect_args.update(
+            sslmode="verify-full", sslrootcert=str(tls_root_cert), gssencmode="disable"
+        )
     engine = create_engine(
         url, echo=False, hide_parameters=True, pool_pre_ping=True, connect_args=connect_args
     )

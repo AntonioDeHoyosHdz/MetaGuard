@@ -3,7 +3,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from metaguard_api.database import Base
 
@@ -21,6 +21,91 @@ def test_offline_migration_does_not_require_secrets() -> None:
     assert "reputation_cache" in Base.metadata.tables
 
 
+def test_password_reset_migration_is_additive_and_cascades_owned_proofs() -> None:
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0011_mfa_recovery_codes")
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('owner','a@b','hash')")
+            )
+            connection.execute(
+                text("INSERT INTO mfa_recovery_codes (account_id,digest) VALUES ('owner',:digest)"),
+                {"digest": "b" * 64},
+            )
+            command.upgrade(cfg, "0012_password_reset")
+            schema = inspect(connection)
+            assert {column["name"] for column in schema.get_columns("password_reset_proofs")} == {
+                "digest",
+                "account_id",
+                "password_version",
+                "expires_at",
+            }
+            assert (
+                connection.scalar(text("SELECT password_reset_used FROM mfa_recovery_codes")) == 0
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO password_reset_proofs "
+                    "(digest,account_id,password_version,expires_at) "
+                    "VALUES (:digest,'owner',:version,'2026-11-20T00:00:00Z')"
+                ),
+                {"digest": "a" * 64, "version": "b" * 64},
+            )
+            connection.execute(text("DELETE FROM accounts WHERE id = 'owner'"))
+            assert connection.scalar(text("SELECT count(*) FROM password_reset_proofs")) == 0
+            command.downgrade(cfg, "0011_mfa_recovery_codes")
+            assert "password_reset_proofs" not in inspect(connection).get_table_names()
+            assert {
+                column["name"] for column in inspect(connection).get_columns("mfa_recovery_codes")
+            } == {"account_id", "digest"}
+    finally:
+        engine.dispose()
+
+
+def test_account_history_migration_is_minimized_and_preserves_other_tables() -> None:
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0012_password_reset")
+            baseline_tables = set(inspect(connection).get_table_names())
+            command.upgrade(cfg, "0013_account_security_events")
+            schema = inspect(connection)
+            assert set(schema.get_table_names()) == baseline_tables | {"account_security_events"}
+            assert {c["name"] for c in schema.get_columns("account_security_events")} == {
+                "id",
+                "account_id",
+                "kind",
+                "created_at",
+                "pace_window",
+            }
+            assert schema.get_foreign_keys("account_security_events")[0]["options"] == {
+                "ondelete": "CASCADE",
+            }
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('owner','a@b','hash')")
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO account_security_events "
+                    "(id,account_id,kind,created_at,pace_window) "
+                    "VALUES ('event','owner','mfa_failed',601,1)"
+                )
+            )
+            connection.execute(text("DELETE FROM accounts WHERE id = 'owner'"))
+            assert connection.scalar(text("SELECT count(*) FROM account_security_events")) == 0
+            command.downgrade(cfg, "0012_password_reset")
+            assert set(inspect(connection).get_table_names()) == baseline_tables
+    finally:
+        engine.dispose()
+
+
 def test_alembic_runs_with_caller_owned_connection() -> None:
     engine = create_engine("sqlite://")
     try:
@@ -30,6 +115,10 @@ def test_alembic_runs_with_caller_owned_connection() -> None:
             command.upgrade(cfg, "head")
             command.check(cfg)
             assert "reputation_cache" in inspect(connection).get_table_names()
+            assert "virustotal_request_quota" in inspect(connection).get_table_names()
+            assert {
+                column["name"] for column in inspect(connection).get_columns("reputation_cache")
+            } >= {"analysis_stats_json", "last_analysis_date"}
             command.downgrade(cfg, "base")
             assert "reputation_cache" not in inspect(connection).get_table_names()
     finally:
@@ -288,6 +377,43 @@ def test_file_reports_migration_preserves_accounts_and_reverses_cleanly() -> Non
                     text("SELECT password_hash FROM accounts WHERE id='legacy-report-1'")
                 ).scalar_one()
                 == "unchanged-hash"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_mfa_recovery_migration_preserves_existing_credentials_and_is_reversible() -> None:
+    from sqlalchemy import text
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            cfg = config()
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "0010_virustotal_cache_quota")
+            connection.execute(
+                text("INSERT INTO accounts (id,email,password_hash) VALUES ('old','test@x','hash')")
+            )
+            command.upgrade(cfg, "0011_mfa_recovery_codes")
+            schema = inspect(connection)
+            assert {column["name"] for column in schema.get_columns("mfa_recovery_codes")} == {
+                "account_id",
+                "digest",
+            }
+            assert schema.get_pk_constraint("mfa_recovery_codes")["constrained_columns"] == [
+                "account_id",
+                "digest",
+            ]
+            assert (
+                schema.get_foreign_keys("mfa_recovery_codes")[0]["options"]["ondelete"] == "CASCADE"
+            )
+            command.downgrade(cfg, "0010_virustotal_cache_quota")
+            assert "mfa_recovery_codes" not in inspect(connection).get_table_names()
+            assert (
+                connection.execute(
+                    text("SELECT password_hash FROM accounts WHERE id='old'")
+                ).scalar_one()
+                == "hash"
             )
     finally:
         engine.dispose()

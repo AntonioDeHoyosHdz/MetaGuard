@@ -34,8 +34,11 @@ def test_settings_only_read_prefixed_environment_variables(monkeypatch: pytest.M
     assert settings.upload_max_bytes == 4096
 
 
-def test_settings_reject_invalid_resource_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("METAGUARD_UPLOAD_MAX_BYTES", "0")
+@pytest.mark.parametrize("setting", ["METAGUARD_UPLOAD_MAX_BYTES", "METAGUARD_WORKER_CONCURRENCY"])
+def test_settings_reject_invalid_resource_limit(
+    monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    monkeypatch.setenv(setting, "0")
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)

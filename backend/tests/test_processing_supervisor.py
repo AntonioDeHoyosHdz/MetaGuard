@@ -237,6 +237,22 @@ def test_processor_image_requires_locked_binary_wheels() -> None:
     assert "packaging==26.3" in dockerfile
 
 
+def test_processor_image_copies_only_its_runtime_modules() -> None:
+    dockerfile = (Path(__file__).parents[1] / "Dockerfile.processor").read_text(encoding="utf-8")
+    instructions = dockerfile.replace("\\\n", " ").splitlines()
+    copies = [line.split()[1:] for line in instructions if line.startswith("COPY ")]
+
+    assert len(copies) == 1
+    assert copies[0][-1] == "./metaguard_api/"
+    assert set(copies[0][:-1]) == {
+        "metaguard_api/__init__.py",
+        "metaguard_api/file_processing.py",
+        "metaguard_api/processing_limits.py",
+        "metaguard_api/processing_types.py",
+        "metaguard_api/processing_worker.py",
+    }
+
+
 def test_processing_report_shape_is_explicit() -> None:
     report = ProcessingReport("image/png", (), True, width=1, height=1)
     assert report.output_verified is True

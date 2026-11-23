@@ -164,7 +164,9 @@ def test_analysis_persists_only_minimized_report_and_returns_owner_resource(api_
 
     result = create_report(client, headers)
 
-    assert set(result) == {"report_id", "report", "created_at", "expires_at"}
+    assert set(result) == {"report_id", "report", "created_at", "expires_at", "virus_total"}
+    assert result["virus_total"]["original"]["status"] == "not_requested"
+    assert result["virus_total"]["cleaned"]["status"] == "not_requested"
     assert set(result["report"]) == REPORT_FIELDS
     assert result["report"]["metadata_categories"] == ["gps", "software"]
     assert result["expires_at"] == "2026-11-19T12:00:00+00:00"
@@ -271,8 +273,12 @@ def test_download_token_is_digest_only_one_use_and_deletes_clean_copy(api_factor
         assert row.download_token_digest == digest
         assert token not in repr(row)
 
-    downloaded = client.get(f"/v1/downloads/{token}", headers=headers)
-    replay = client.get(f"/v1/downloads/{token}", headers=headers)
+    for missing in ("Origin", "X-CSRF-Token"):
+        incomplete = {name: value for name, value in headers.items() if name != missing}
+        denied = client.post("/v1/downloads", headers=incomplete, json={"token": token})
+        assert denied.status_code == 403
+    downloaded = client.post("/v1/downloads", headers=headers, json={"token": token})
+    replay = client.post("/v1/downloads", headers=headers, json={"token": token})
 
     assert downloaded.status_code == 200
     assert downloaded.content == b"synthetic-cleaned-copy"
@@ -293,6 +299,27 @@ def test_download_token_is_digest_only_one_use_and_deletes_clean_copy(api_factor
     assert all(token not in statement for statement in statements)
 
 
+def test_download_body_errors_never_reflect_or_log_inputs(api_factory, caplog):
+    _, _, app, _, _, _, _ = api_factory()
+    client, headers = login_client(app, "owner@example.test")
+    marker = "synthetic-private-marker"
+    caplog.set_level("INFO")
+    for payload in ({"unexpected": marker}, {"token": [marker]}, [marker]):
+        response = client.post("/v1/downloads", headers=headers, json=payload)
+        assert response.status_code == 400
+        assert response.headers["cache-control"] == "no-store"
+        assert marker not in response.text
+    invalid_json = client.post(
+        "/v1/downloads",
+        headers={**headers, "Content-Type": "application/json"},
+        content=marker,
+    )
+    assert invalid_json.status_code == 400
+    assert marker not in invalid_json.text
+    assert marker not in caplog.text
+    assert "/v1/downloads/{token}" not in app.openapi()["paths"]
+
+
 def test_foreign_download_does_not_consume_the_owners_token(api_factory):
     _, _, app, _, _, _, _ = api_factory()
     owner, owner_headers = login_client(app, "owner@example.test")
@@ -300,8 +327,9 @@ def test_foreign_download_does_not_consume_the_owners_token(api_factory):
     result = create_report(owner, owner_headers)
     issued = owner.post(f"/v1/reports/{result['report_id']}/download-token", headers=owner_headers)
 
-    foreign = other.get(f"/v1/downloads/{issued.json()['token']}", headers=other_headers)
-    owner_download = owner.get(f"/v1/downloads/{issued.json()['token']}", headers=owner_headers)
+    body = {"token": issued.json()["token"]}
+    foreign = other.post("/v1/downloads", json=body, headers=other_headers)
+    owner_download = owner.post("/v1/downloads", json=body, headers=owner_headers)
 
     assert foreign.status_code == 404
     assert owner_download.status_code == 200
@@ -357,7 +385,7 @@ def test_download_token_expires_at_ten_minutes(api_factory):
         "now",
         lambda: NOW + timedelta(minutes=10),
     )
-    expired = client.get(f"/v1/downloads/{token}", headers=headers)
+    expired = client.post("/v1/downloads", json={"token": token}, headers=headers)
 
     assert expired.status_code == 404
 

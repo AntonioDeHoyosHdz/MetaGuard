@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from json import dumps
 from uuid import uuid4
 
 import pyotp
@@ -9,9 +10,9 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from metaguard_api.account_credentials import hash_password
+from metaguard_api.account_credentials import hash_password, verify_password
 from metaguard_api.account_totp import AccountTotp
-from metaguard_api.accounts import Account, AccountSession
+from metaguard_api.accounts import Account, AccountSession, EmailVerificationToken
 from metaguard_api.database import Base
 from metaguard_api.main import create_app
 from metaguard_api.settings import Settings
@@ -577,6 +578,16 @@ def test_registration_and_email_verification_keep_token_out_of_responses(auth_en
     )
     assert registered.status_code == 202
     assert registered.json() == {"registered": True}
+    duplicate = client.post(
+        "/v1/auth/register",
+        json={"email": email.upper(), "password": "another long synthetic password"},
+        headers=headers,
+    )
+    assert duplicate.status_code == registered.status_code
+    assert duplicate.content == registered.content
+    assert duplicate.headers == registered.headers
+    assert registered.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in registered.headers
     assert len(sender.deliveries) == 1
     assert sender.deliveries[0][0] == email
     token = sender.deliveries[0][1]
@@ -598,6 +609,10 @@ def test_registration_and_email_verification_keep_token_out_of_responses(auth_en
     assert verified.json() == {"verified": True}
     assert token not in verified.text
     assert runtime.rate_limiter.calls[-1][0] == "auth_verify_email"
+    login = client.post(
+        "/v1/auth/login", json={"email": email, "password": password}, headers=headers
+    )
+    assert login.status_code == 200
     with auth_env["factory"]() as session:
         account = session.scalar(select(Account).where(Account.email == email))
         assert account is not None and account.email_verified_at is not None
@@ -605,6 +620,50 @@ def test_registration_and_email_verification_keep_token_out_of_responses(auth_en
             session.execute(text("SELECT count(*) FROM email_verification_tokens")).scalar_one()
             == 0
         )
+
+
+def test_gmail_transport_integrates_with_existing_registration(auth_env, tmp_path, monkeypatch):
+    import re
+    from unittest.mock import MagicMock
+
+    from metaguard_api.gmail_sender import GmailSender
+    from metaguard_api.secrets import SecretStore
+
+    # The SMTP double captures a synthetic message; no provider receives it.
+    (tmp_path / "gmail_app_password").write_text("abcdefghijklmnop", encoding="ascii")
+    smtp = MagicMock()
+    smtp.return_value.__enter__.return_value.send_message.return_value = {}
+    monkeypatch.setattr("metaguard_api.gmail_sender.smtplib.SMTP_SSL", smtp)
+    sender = GmailSender(sender_email="stagingtest@gmail.com", secret_store=SecretStore(tmp_path))
+    client, _ = make_registration_client(auth_env, email_sender=sender)
+    csrf = preauth(client)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf}
+    email = "staging-recipient@example.test"
+    password = "a sufficiently long synthetic password"
+
+    registered = client.post(
+        "/v1/auth/register", json={"email": email, "password": password}, headers=headers
+    )
+    assert registered.status_code == 202
+    outbound = smtp.return_value.__enter__.return_value.send_message
+    outbound.assert_called_once()
+    message = outbound.call_args.args[0]
+    assert str(message["To"]) == email
+    plain = message.get_body(preferencelist=("plain",)).get_content()
+    html = message.get_body(preferencelist=("html",)).get_content()
+    for private_value in (email, password):
+        assert private_value not in plain
+        assert private_value not in html
+    code = re.search(r"(?m)^[A-Za-z0-9_-]{43}$", plain)
+    assert code is not None
+    token = code.group()
+    assert f">{token}</code>" in html
+    assert token not in registered.text
+
+    verified = client.post("/v1/auth/verify-email", json={"token": token}, headers=headers)
+    assert verified.status_code == 200
+    replay = client.post("/v1/auth/verify-email", json={"token": token}, headers=headers)
+    assert replay.status_code == 400
 
 
 def test_registration_fails_closed_when_screening_or_sender_is_missing(auth_env):
@@ -622,6 +681,166 @@ def test_registration_fails_closed_when_screening_or_sender_is_missing(auth_env)
 class FailingEmailSender:
     def send_verification(self, email, token):
         raise RuntimeError(f"synthetic mail failure for {email}: {token}")
+
+
+RESEND_PATH = "/v1/auth/resend-verification"
+PENDING_EMAIL = "pending@example.test"
+PENDING_PASSWORD = "a sufficiently long synthetic password"
+
+
+def register_pending(client, sender, headers):
+    response = client.post(
+        "/v1/auth/register",
+        json={"email": PENDING_EMAIL, "password": PENDING_PASSWORD},
+        headers=headers,
+    )
+    assert response.status_code == 202
+    return sender.deliveries[-1][1]
+
+
+def test_resend_protects_origin_csrf_and_bounds_input(auth_env):
+    sender = FakeEmailSender()
+    client, runtime = make_registration_client(auth_env, email_sender=sender)
+    csrf = preauth(client)
+    payload = {"email": PENDING_EMAIL, "password": PENDING_PASSWORD}
+    for headers in (
+        {"Origin": f"{ORIGIN}.other.test", "X-CSRF-Token": csrf},
+        {"Origin": ORIGIN, "X-CSRF-Token": "A" * 43},
+        {"Origin": ORIGIN},
+    ):
+        assert client.post(RESEND_PATH, json=payload, headers=headers).status_code == 403
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf}
+    malformed = client.post(RESEND_PATH, json={**payload, "extra": True}, headers=headers)
+    assert malformed.status_code == 400
+    assert malformed.json()["error"]["code"] == "invalid_request"
+    assert PENDING_PASSWORD not in malformed.text
+    oversized = client.post(
+        RESEND_PATH,
+        content=b" " * 8192 + dumps(payload).encode("ascii"),
+        headers={**headers, "Content-Type": "application/json"},
+    )
+    assert oversized.status_code == 400
+    assert [call[0] for call in runtime.rate_limiter.calls] == ["auth_status"]
+    assert not sender.deliveries
+
+
+@pytest.mark.parametrize("advance", [timedelta(minutes=2), timedelta(hours=2)])
+def test_resend_replaces_a_lost_or_expired_token_without_existence_signal(
+    auth_env, advance, monkeypatch
+):
+    sender = FakeEmailSender()
+    client, runtime = make_registration_client(auth_env, email_sender=sender)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": preauth(client)}
+    old_token = register_pending(client, sender, headers)
+    auth_env["clock"][0] += advance
+    checked_hashes = []
+
+    def record_verification(password, encoded):
+        checked_hashes.append(encoded)
+        return verify_password(password, encoded)
+
+    monkeypatch.setattr("metaguard_api.email_verification.verify_password", record_verification)
+    rejected = []
+    for email, password in (
+        ("unknown@example.test", PENDING_PASSWORD),
+        (auth_env["email"], auth_env["password"]),
+        (PENDING_EMAIL, "wrong synthetic password"),
+    ):
+        rejected.append(
+            client.post(RESEND_PATH, json={"email": email, "password": password}, headers=headers)
+        )
+        assert sender.deliveries == [(PENDING_EMAIL, old_token)]
+    assert len(checked_hashes) == 3
+    assert checked_hashes[0] == runtime.dummy_password_hash
+    assert runtime.dummy_password_hash not in checked_hashes[1:]
+
+    success = client.post(
+        RESEND_PATH,
+        json={"email": f" {PENDING_EMAIL.upper()} ", "password": PENDING_PASSWORD},
+        headers=headers,
+    )
+    assert success.status_code == 202
+    assert success.json() == {"requested": True}
+    assert success.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in success.headers
+    for response in rejected:
+        assert (response.status_code, response.content, response.headers) == (
+            success.status_code,
+            success.content,
+            success.headers,
+        )
+    assert runtime.rate_limiter.calls[-1][2] == sha256(PENDING_EMAIL.encode("ascii")).hexdigest()
+
+    assert len(sender.deliveries) == 2
+    recipient, new_token = sender.deliveries[-1]
+    assert recipient == PENDING_EMAIL
+    assert new_token != old_token
+    for private in (new_token, old_token, PENDING_EMAIL, PENDING_PASSWORD):
+        assert private not in success.text
+
+    with auth_env["factory"]() as session:
+        stored = session.scalar(select(EmailVerificationToken))
+        assert stored.token_digest == sha256(new_token.encode("ascii")).hexdigest()
+        assert stored.expires_at == auth_env["clock"][0] + timedelta(hours=1)
+        assert session.scalar(select(AccountSession)) is None
+
+    verify_path = "/v1/auth/verify-email"
+    assert client.post(verify_path, json={"token": old_token}, headers=headers).status_code == 400
+    assert client.post(verify_path, json={"token": new_token}, headers=headers).status_code == 200
+    assert client.post(verify_path, json={"token": new_token}, headers=headers).status_code == 400
+
+
+def test_resend_rate_limit_does_not_rotate_or_send(auth_env):
+    sender = FakeEmailSender()
+    limiter = FakeRateLimiter()
+    client, _ = make_registration_client(auth_env, email_sender=sender, rate_limiter=limiter)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": preauth(client)}
+    old_token = register_pending(client, sender, headers)
+    limiter.allowed = False
+    limited = client.post(
+        RESEND_PATH, json={"email": PENDING_EMAIL, "password": PENDING_PASSWORD}, headers=headers
+    )
+    assert limited.status_code == 429
+    assert limited.json()["error"]["code"] == "rate_limited"
+    assert sender.deliveries == [(PENDING_EMAIL, old_token)]
+    with auth_env["factory"]() as session:
+        assert (
+            session.scalar(select(EmailVerificationToken)).token_digest
+            == sha256(old_token.encode("ascii")).hexdigest()
+        )
+
+
+def test_resend_delivery_failure_keeps_the_previous_code_and_generic_response(auth_env):
+    class FailsAfterFirstDelivery(FakeEmailSender):
+        def send_verification(self, email, token):
+            super().send_verification(email, token)
+            if len(self.deliveries) > 1:
+                FailingEmailSender().send_verification(email, token)
+
+    sender = FailsAfterFirstDelivery()
+    client, _ = make_registration_client(auth_env, email_sender=sender)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": preauth(client)}
+    old_token = register_pending(client, sender, headers)
+    auth_env["clock"][0] += timedelta(minutes=2)
+    failed = client.post(
+        RESEND_PATH, json={"email": PENDING_EMAIL, "password": PENDING_PASSWORD}, headers=headers
+    )
+    assert (failed.status_code, failed.json()) == (202, {"requested": True})
+    assert len(sender.deliveries) == 2
+    failed_token = sender.deliveries[-1][1]
+    assert failed_token != old_token
+    for private in (PENDING_EMAIL, PENDING_PASSWORD, failed_token, "synthetic mail failure"):
+        assert private not in failed.text
+    with auth_env["factory"]() as session:
+        assert (
+            session.scalar(select(EmailVerificationToken)).token_digest
+            == sha256(old_token.encode("ascii")).hexdigest()
+        )
+    verify_path = "/v1/auth/verify-email"
+    assert (
+        client.post(verify_path, json={"token": failed_token}, headers=headers).status_code == 400
+    )
+    assert client.post(verify_path, json={"token": old_token}, headers=headers).status_code == 200
 
 
 def test_registration_mail_failure_rolls_back_account_and_token(auth_env):

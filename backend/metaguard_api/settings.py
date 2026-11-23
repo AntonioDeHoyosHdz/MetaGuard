@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     processing_timeout_seconds: int = Field(default=60, gt=0)
     worker_cpu_limit: float = Field(default=1.0, gt=0)
     worker_memory_bytes: int = Field(default=1024**3, gt=0)
+    # API-side analysis admission; the private supervisor has its own worker limit.
     worker_concurrency: int = Field(default=1, gt=0)
 
     requests_per_minute_per_ip: int = Field(default=60, gt=0)

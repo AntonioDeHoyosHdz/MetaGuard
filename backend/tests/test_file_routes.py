@@ -1,8 +1,13 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -11,13 +16,14 @@ from metaguard_api.account_credentials import hash_password
 from metaguard_api.accounts import Account
 from metaguard_api.auth_routes import AuthRuntime
 from metaguard_api.database import Base, Database
-from metaguard_api.file_routes import FileRuntime
+from metaguard_api.file_routes import FileRuntime, _AnalysisPermit
 from metaguard_api.file_storage import InMemoryTemporaryFileStore
 from metaguard_api.main import create_app
 from metaguard_api.processing_ipc_client import ProcessingClient
 from metaguard_api.processing_types import ProcessedFile, ProcessingReport
 from metaguard_api.reports import FileReport
 from metaguard_api.settings import Settings
+from metaguard_api.virustotal import VirusTotalResult, VirusTotalStatus
 
 ORIGIN = "https://frontend.example"
 SIGNING_KEY = "synthetic-jwt-signing-key-for-tests-only-32-bytes"
@@ -61,11 +67,34 @@ class FakeProcessingClient(ProcessingClient):
         )
 
 
+class FakeVirusTotalClient:
+    def __init__(self, *, fail=False):
+        self.calls = []
+        self.fail = fail
+
+    def lookup(self, digest, database, *, now):
+        self.calls.append((digest, database, now))
+        if self.fail:
+            raise RuntimeError("private provider details")
+        return VirusTotalResult(
+            status=VirusTotalStatus.FOUND,
+            last_analysis_stats={"malicious": 0, "undetected": 8},
+            last_analysis_date=int(NOW.timestamp()),
+            report_url=f"https://www.virustotal.com/gui/file/{digest}",
+        )
+
+
 @pytest.fixture
-def api_factory():
+def api_factory(tmp_path):
     environments = []
 
-    def build(*, max_upload_bytes=1024, max_store_bytes=4096, with_file_runtime=True):
+    def build(
+        *,
+        max_upload_bytes=1024,
+        max_store_bytes=4096,
+        with_file_runtime=True,
+        virus_total_client=None,
+    ):
         engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -112,10 +141,16 @@ def api_factory():
         )
         settings = Settings(
             environment="test",
+            secret_dir=tmp_path / "secrets",
             auth_allowed_origins=(ORIGIN,),
             upload_max_bytes=max_upload_bytes,
         )
-        app = create_app(settings, auth_runtime=auth_runtime, file_runtime=file_runtime)
+        app = create_app(
+            settings,
+            auth_runtime=auth_runtime,
+            file_runtime=file_runtime,
+            virus_total_client=virus_total_client,
+        )
         environments.append((engine, factory, app, store, processor, limiter, account_id))
         return environments[-1]
 
@@ -196,7 +231,27 @@ def test_upload_stores_raw_bytes_and_analysis_returns_only_minimized_report(api_
     )
 
     assert analysis.status_code == 200
-    assert set(analysis.json()) == {"report_id", "report", "created_at", "expires_at"}
+    assert set(analysis.json()) == {
+        "report_id",
+        "report",
+        "created_at",
+        "expires_at",
+        "virus_total",
+    }
+    assert analysis.json()["virus_total"] == {
+        "original": {
+            "status": "key_unavailable",
+            "last_analysis_stats": None,
+            "last_analysis_date": None,
+            "report_url": None,
+        },
+        "cleaned": {
+            "status": "key_unavailable",
+            "last_analysis_stats": None,
+            "last_analysis_date": None,
+            "report_url": None,
+        },
+    }
     assert analysis.json()["report"] == {
         "media_type": "image/png",
         "metadata_categories": ["gps", "software"],
@@ -214,6 +269,76 @@ def test_upload_stores_raw_bytes_and_analysis_returns_only_minimized_report(api_
         "uploads_per_minute_per_ip",
         "uploads_per_hour_per_account",
     ]
+
+
+def test_analysis_only_queries_hashes_after_explicit_consent(api_factory):
+    import json
+    from hashlib import sha256
+
+    from metaguard_api.file_processing import ProcessedFile
+
+    vt = FakeVirusTotalClient()
+    _, _, app, _, processor, _, _ = api_factory(virus_total_client=vt)
+    client, headers = login_client(app)
+    original = b"synthetic original bytes"
+    cleaned = b"synthetic-cleaned-copy"
+    processor.process = lambda _data, content_type: ProcessedFile(
+        cleaned_bytes=cleaned,
+        media_type=content_type,
+        report=ProcessingReport(
+            media_type=content_type,
+            metadata_categories=(),
+            output_verified=True,
+            width=12,
+            height=8,
+            active_content_removed=False,
+            uri_links_removed=0,
+        ),
+    )
+    upload = client.post(
+        "/v1/uploads", content=original, headers={**headers, "Content-Type": "image/png"}
+    )
+    upload_id = upload.json()["upload_id"]
+
+    denied = client.post(f"/v1/analyses/{upload_id}", json={}, headers=headers)
+    assert denied.status_code == 200
+    assert vt.calls == []
+    assert denied.json()["virus_total"]["original"]["status"] == "not_requested"
+
+    consented = client.post(
+        f"/v1/analyses/{upload_id}",
+        content=json.dumps({"virus_total_consent": True}),
+        headers={**headers, "Content-Type": "application/json"},
+    )
+    assert consented.status_code == 200
+    assert [call[0] for call in vt.calls] == [
+        sha256(original).hexdigest(),
+        sha256(cleaned).hexdigest(),
+    ]
+    assert all(call[1] is not None for call in vt.calls)
+    assert consented.json()["virus_total"]["original"]["status"] == "found"
+    assert consented.json()["virus_total"]["cleaned"]["report_url"].endswith(
+        sha256(cleaned).hexdigest()
+    )
+
+
+def test_virustotal_exception_does_not_fail_file_analysis(api_factory):
+    vt = FakeVirusTotalClient(fail=True)
+    _, _, app, _, _, _, _ = api_factory(virus_total_client=vt)
+    client, headers = login_client(app)
+    upload = client.post(
+        "/v1/uploads", content=b"synthetic", headers={**headers, "Content-Type": "image/png"}
+    )
+
+    response = client.post(
+        f"/v1/analyses/{upload.json()['upload_id']}",
+        json={"virus_total_consent": True},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["virus_total"]["original"]["status"] == "unavailable"
+    assert "private provider details" not in response.text
 
 
 def test_analysis_defaults_consent_to_false_and_rejects_unknown_fields(api_factory):
@@ -444,8 +569,133 @@ def test_processing_failure_is_generic_and_does_not_expose_processor_details(api
     response = client.post(f"/v1/analyses/{uploaded.json()['upload_id']}", json={}, headers=headers)
 
     assert response.status_code == 503
+    assert "Retry-After" not in response.headers
     assert b"synthetic private processing details" not in response.content
     assert len(processor.calls) == 1
+
+    processor.fail = False
+    retry = client.post(f"/v1/analyses/{uploaded.json()['upload_id']}", json={}, headers=headers)
+    assert retry.status_code == 200
+
+
+def test_busy_analysis_rejects_without_reading_or_consuming_upload(api_factory, monkeypatch):
+    reputation = FakeVirusTotalClient()
+    _, factory, app, store, processor, _, _ = api_factory(virus_total_client=reputation)
+    client, headers = login_client(app)
+    upload_headers = {**headers, "Content-Type": "image/png"}
+    first = client.post("/v1/uploads", content=b"first", headers=upload_headers)
+    retryable = client.post("/v1/uploads", content=b"retryable", headers=upload_headers)
+    first_id = first.json()["upload_id"]
+    retryable_id = retryable.json()["upload_id"]
+    first_path = f"/v1/analyses/{first_id}"
+    retryable_path = f"/v1/analyses/{retryable_id}"
+    reads = []
+    started = Event()
+    finish = Event()
+    get = store.get
+    process = processor.process
+
+    def observe_read(file_id, *args, **kwargs):
+        reads.append(file_id)
+        return get(file_id, *args, **kwargs)
+
+    def hold_first(data, content_type):
+        if data == b"first":
+            started.set()
+            if not finish.wait(5):
+                raise TimeoutError("Synthetic analysis did not resume")
+        return process(data, content_type)
+
+    monkeypatch.setattr(store, "get", observe_read)
+    monkeypatch.setattr(processor, "process", hold_first)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        in_flight = pool.submit(client.post, first_path, json={}, headers=headers)
+        try:
+            assert started.wait(5)
+            busy = client.post(retryable_path, json={"virus_total_consent": True}, headers=headers)
+            assert busy.status_code == 503
+            assert busy.headers["Retry-After"] == "1"
+            assert busy.headers["Cache-Control"] == "no-store"
+            assert busy.json()["error"]["code"] == "processing_busy"
+            assert reads == [first_id]
+            assert processor.calls == []
+            assert reputation.calls == []
+            assert store.size_bytes == len(b"firstretryable")
+            with factory() as session:
+                assert session.query(FileReport).count() == 0
+        finally:
+            finish.set()
+        assert in_flight.result(timeout=5).status_code == 200
+
+    retry = client.post(retryable_path, json={}, headers=headers)
+    assert retry.status_code == 200
+    assert reads == [first_id, retryable_id]
+    assert processor.calls == [(b"first", "image/png"), (b"retryable", "image/png")]
+
+
+def test_cancelled_analysis_keeps_slot_until_active_worker_really_exits(api_factory, monkeypatch):
+    _, factory, app, _, processor, _, _ = api_factory()
+    client, headers = login_client(app)
+    upload_headers = {**headers, "Content-Type": "image/png"}
+    first = client.post("/v1/uploads", content=b"first", headers=upload_headers)
+    next_upload = client.post("/v1/uploads", content=b"next", headers=upload_headers)
+    first_path = f"/v1/analyses/{first.json()['upload_id']}"
+    next_path = f"/v1/analyses/{next_upload.json()['upload_id']}"
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        released = asyncio.Event()
+        finish = Event()
+        process = processor.process
+        run_stage = _AnalysisPermit.run
+
+        def hold_first(data, content_type):
+            if data == b"first":
+                loop.call_soon_threadsafe(started.set)
+                if not finish.wait(5):
+                    raise TimeoutError("Synthetic analysis did not resume")
+            return process(data, content_type)
+
+        def observe_exit(self, stage, *args, **kwargs):
+            try:
+                return run_stage(self, stage, *args, **kwargs)
+            finally:
+                if stage is hold_first and args[0] == b"first":
+                    loop.call_soon_threadsafe(released.set)
+
+        monkeypatch.setattr(processor, "process", hold_first)
+        monkeypatch.setattr(_AnalysisPermit, "run", observe_exit)
+        # Exercise direct asyncio cancellation at the routed request, not an AnyIO scope.
+        routed_app = FastAPI()
+        routed_app.router = app.router
+        async with AsyncClient(
+            transport=ASGITransport(app=routed_app),
+            base_url="https://api.example",
+            cookies=client.cookies,
+        ) as async_client:
+            task = asyncio.create_task(async_client.post(first_path, json={}, headers=headers))
+            try:
+                await asyncio.wait_for(started.wait(), timeout=5)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, timeout=5)
+                busy = await async_client.post(next_path, json={}, headers=headers)
+                assert busy.status_code == 503
+                assert busy.json()["error"]["code"] == "processing_busy"
+            finally:
+                finish.set()
+                if started.is_set():
+                    await asyncio.wait_for(released.wait(), timeout=5)
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            retry = await async_client.post(next_path, json={}, headers=headers)
+            assert retry.status_code == 200
+
+    asyncio.run(exercise())
+    with factory() as session:
+        assert session.query(FileReport).count() == 1
 
 
 def test_report_persistence_failure_removes_the_new_cleaned_copy(api_factory, monkeypatch):

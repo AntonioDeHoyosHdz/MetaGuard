@@ -145,6 +145,30 @@ def consume_mfa_login_challenge(
     ).scalar_one_or_none()
 
 
+def get_mfa_login_challenge_expiry(
+    session: Session,
+    account_id: str,
+    challenge_token: str,
+    csrf_token: str,
+    *,
+    now: datetime,
+) -> datetime | None:
+    """Read an unexpired, browser-bound challenge without consuming it."""
+    challenge_digest = _token_digest(challenge_token)
+    csrf_digest = _token_digest(csrf_token)
+    current_time = _utc_datetime(now)
+    if challenge_digest is None or csrf_digest is None or current_time is None:
+        return None
+    return session.scalar(
+        select(MfaLoginChallenge.expires_at).where(
+            MfaLoginChallenge.account_id == account_id,
+            MfaLoginChallenge.challenge_digest == challenge_digest,
+            MfaLoginChallenge.csrf_digest == csrf_digest,
+            MfaLoginChallenge.expires_at > current_time,
+        )
+    )
+
+
 def _decode_claims(
     token: str,
     *,
@@ -261,6 +285,7 @@ def get_active_session(
     issuer: str,
     audience: str,
     now: datetime,
+    lock_for_update: bool = False,
 ) -> ActiveSession | None:
     """Verify fixed-algorithm JWT claims and require a live, unrevoked DB row."""
     claims = _decode_claims(
@@ -275,15 +300,16 @@ def get_active_session(
     if claims is None or token_digest is None or current_time is None:
         return None
 
-    stored = session.execute(
-        select(AccountSession).where(
-            AccountSession.id == claims["jti"],
-            AccountSession.account_id == claims["sub"],
-            AccountSession.token_digest == token_digest,
-            AccountSession.expires_at > current_time,
-            AccountSession.revoked_at.is_(None),
-        )
-    ).scalar_one_or_none()
+    statement = select(AccountSession).where(
+        AccountSession.id == claims["jti"],
+        AccountSession.account_id == claims["sub"],
+        AccountSession.token_digest == token_digest,
+        AccountSession.expires_at > current_time,
+        AccountSession.revoked_at.is_(None),
+    )
+    if lock_for_update:
+        statement = statement.with_for_update()
+    stored = session.execute(statement).scalar_one_or_none()
     if stored is None:
         return None
     return ActiveSession(

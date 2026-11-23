@@ -3,10 +3,16 @@
 from alembic import context
 
 from metaguard_api import (  # noqa: F401
+    account_security_events,
     account_totp,
+    login_email_challenge,
+    login_risk,
+    mfa_lifecycle,
+    password_reset,
     pending_totp,
     reports,
     reputation_cache,
+    security_alerts,
     system_security_events,
 )
 from metaguard_api.accounts import Account

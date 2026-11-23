@@ -1,5 +1,7 @@
 """Private provisional two-factor verification; never grants a session."""
 
+from collections.abc import Callable
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,8 @@ def check_second_factor(
     key: bytes,
     key_version: int,
     now: int,
+    on_mfa_rejected: Callable[[], None] | None = None,
+    on_bad_password: Callable[[str], None] | None = None,
 ) -> str | None:
     """Return a provisional account ID only for both factors in this transaction.
 
@@ -32,7 +36,13 @@ def check_second_factor(
             locked_id = session.scalar(
                 select(Account.id).where(Account.email == email).with_for_update()
             )
-    first = check_first_factor(session, email, password, dummy_password_hash=dummy_password_hash)
+    first = check_first_factor(
+        session,
+        email,
+        password,
+        dummy_password_hash=dummy_password_hash,
+        on_bad_password=on_bad_password,
+    )
     if (
         first.status is not FirstFactorStatus.MFA_REQUIRED
         or first.account_id is None
@@ -40,5 +50,7 @@ def check_second_factor(
     ):
         return None
     if not consume_totp(session, locked_id, code, key=key, key_version=key_version, now=now):
+        if on_mfa_rejected is not None:
+            on_mfa_rejected()
         return None
     return locked_id

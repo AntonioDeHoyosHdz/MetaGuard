@@ -13,6 +13,7 @@ class SecretName(StrEnum):
     HIBP_API_KEY = "hibp_api_key"
     VIRUSTOTAL_API_KEY = "virustotal_api_key"
     SMTP_CREDENTIALS = "smtp_credentials"
+    GMAIL_APP_PASSWORD = "gmail_app_password"
 
 
 class SecretUnavailable(RuntimeError):

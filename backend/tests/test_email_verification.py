@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from metaguard_api.account_credentials import hash_password, verify_password
 from metaguard_api.accounts import Account, EmailVerificationToken
 from metaguard_api.database import Base
 from metaguard_api.email_verification import (
@@ -125,6 +126,56 @@ def test_already_verified_account_cannot_prepare_or_consume_another_token(sessio
         is None
     )
     assert not consume_email_verification(session, token, now=now)
+
+
+def test_resend_transactions_that_saw_the_same_token_cannot_both_replace_it(tmp_path, monkeypatch):
+    from metaguard_api.email_verification import prepare_email_verification_resend
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'resend.db'}", connect_args={"timeout": 10})
+    Base.metadata.create_all(engine)
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    password = "synthetic test password"
+    dummy = hash_password("synthetic dummy password")
+    barrier = Barrier(2)
+
+    def verify_same_snapshot(value, encoded):
+        barrier.wait(timeout=5)
+        return verify_password(value, encoded)
+
+    monkeypatch.setattr("metaguard_api.email_verification.verify_password", verify_same_snapshot)
+    try:
+        with Session(engine) as setup, setup.begin():
+            setup.add(
+                Account(
+                    id="account-1", email="test@example.test", password_hash=hash_password(password)
+                )
+            )
+            setup.flush()
+            old_token = prepare_email_verification(
+                setup, "account-1", now=now, expires_at=now + timedelta(hours=1)
+            )
+
+        def resend(_index):
+            with Session(engine) as contender, contender.begin():
+                return prepare_email_verification_resend(
+                    contender,
+                    "test@example.test",
+                    password,
+                    dummy_password_hash=dummy,
+                    now=now + timedelta(minutes=2),
+                    expires_at=now + timedelta(hours=1, minutes=2),
+                )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(resend, range(2)))
+        assert results.count(None) == 1
+        replacement = next(token for token in results if token is not None)
+        assert replacement != old_token
+        with Session(engine) as observer, observer.begin():
+            assert not consume_email_verification(observer, old_token, now=now)
+            assert consume_email_verification(observer, replacement, now=now)
+    finally:
+        engine.dispose()
 
 
 def test_concurrent_consumers_have_at_most_one_winner(tmp_path):

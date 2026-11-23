@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from metaguard_api.auth_routes import (
@@ -15,7 +16,7 @@ from metaguard_api.auth_routes import (
     authenticate_owner,
 )
 from metaguard_api.database import Database
-from metaguard_api.file_routes import FileRuntime
+from metaguard_api.file_routes import FileRuntime, _json_media_type, _read_limited_body
 from metaguard_api.file_storage import InMemoryTemporaryFileStore
 from metaguard_api.reports import (
     consume_download_token,
@@ -30,6 +31,13 @@ from metaguard_api.reports import (
 from metaguard_api.settings import Settings
 
 _SUPPORTED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
+_MAX_DOWNLOAD_BODY_BYTES = 1024
+
+
+class DownloadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    token: SecretStr
 
 
 def _report_runtime_ready(runtime: FileRuntime | None) -> bool:
@@ -193,8 +201,17 @@ def create_report_router(
             headers={"Cache-Control": "no-store"},
         )
 
-    @router.get("/v1/downloads/{token}", summary="Download one cleaned file with an active token")
-    async def download_file(token: str, request: Request):
+    @router.post(
+        "/v1/downloads",
+        summary="Download one cleaned file with an active token",
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {"application/json": {"schema": DownloadRequest.model_json_schema()}},
+            },
+        },
+    )
+    async def download_file(request: Request):
         owner, auth_error = await run_in_threadpool(
             authenticate_owner,
             request,
@@ -207,7 +224,17 @@ def create_report_router(
             return auth_error
         if not _report_runtime_ready(file_runtime) or not isinstance(owner, AuthenticatedOwner):
             return _error(503, "reports_unavailable", "Reports are unavailable")
-        digest = digest_download_token(token)
+        if not _json_media_type(request):
+            return _error(415, "unsupported_media_type", "JSON request body is required")
+        body, body_error = await _read_limited_body(request, maximum_bytes=_MAX_DOWNLOAD_BODY_BYTES)
+        if body_error is not None:
+            return body_error
+        # Keep secret-bearing input out of FastAPI's validation responses.
+        try:
+            download = DownloadRequest.model_validate_json(body)
+        except ValidationError:
+            return _error(400, "invalid_request", "Invalid request")
+        digest = digest_download_token(download.token.get_secret_value())
         if digest is None:
             return _error(404, "not_found", "Download not found")
         try:

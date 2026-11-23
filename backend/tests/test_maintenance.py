@@ -1,13 +1,354 @@
+import asyncio
 import signal
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
+from threading import Event, RLock, current_thread
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
 
 from metaguard_api.database import Base, Database
+from metaguard_api.file_maintenance import run_maintenance_cycle, run_maintenance_loop
+from metaguard_api.file_routes import FileRuntime
+from metaguard_api.file_storage import InMemoryTemporaryFileStore
+from metaguard_api.main import create_app
 from metaguard_api.maintenance import _StopFlag, _wait_for_interval, main
 from metaguard_api.reputation_cache import CacheVerdict, get_verdict, save_verdict
+from metaguard_api.settings import Settings
+
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
+_KEY = b"k" * 32
+
+
+def _process_runtime(store):
+    return SimpleNamespace(store=store, _uploads={}, _lock=RLock())
+
+
+def test_app_lifespan_does_not_start_maintenance_without_file_dependencies(monkeypatch):
+    started = []
+
+    async def worker(*_args, **_kwargs):
+        started.append(True)
+
+    monkeypatch.setattr("metaguard_api.main.run_maintenance_loop", worker)
+    app = create_app(Settings(_env_file=None, environment="test"))
+
+    async def exercise_lifespan():
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(0)
+
+    asyncio.run(exercise_lifespan())
+    assert started == []
+
+
+def test_app_lifespan_does_not_start_maintenance_without_database(monkeypatch):
+    started = []
+
+    async def worker(*_args, **_kwargs):
+        started.append(True)
+
+    monkeypatch.setattr("metaguard_api.main.run_maintenance_loop", worker)
+    runtime = FileRuntime(
+        store=InMemoryTemporaryFileStore(max_bytes=128),
+        storage_key=_KEY,
+        processing_client=object(),
+    )
+    app = create_app(Settings(_env_file=None, environment="test"), file_runtime=runtime)
+
+    async def exercise_lifespan():
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(0)
+
+    asyncio.run(exercise_lifespan())
+    assert started == []
+
+
+def test_app_lifespan_cancels_maintenance_worker_on_shutdown(monkeypatch):
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def worker(*_args, **_kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr("metaguard_api.main.run_maintenance_loop", worker)
+    database = Database(create_engine("sqlite:///:memory:"))
+    runtime = FileRuntime(
+        store=InMemoryTemporaryFileStore(max_bytes=128),
+        storage_key=_KEY,
+        processing_client=object(),
+        database=database,
+    )
+    app = create_app(Settings(_env_file=None, environment="test"), file_runtime=runtime)
+
+    async def exercise_lifespan():
+        async with app.router.lifespan_context(app):
+            await asyncio.wait_for(started.wait(), timeout=1)
+            task = app.state.maintenance_task
+        assert stopped.is_set()
+        assert task.cancelled()
+
+    try:
+        asyncio.run(exercise_lifespan())
+    finally:
+        database.close()
+
+
+def test_app_shutdown_waits_for_inflight_purge_thread(monkeypatch):
+    purge_started = Event()
+    release_purge = Event()
+    purge_active = Event()
+    purge_thread_exited = Event()
+    lifespan_exited = Event()
+    late_mutations = []
+    mutation_threads = []
+
+    def blocking_purge():
+        purge_active.set()
+        try:
+            mutation_threads.append(current_thread().ident)
+            purge_started.set()
+            if not release_purge.wait(timeout=3):
+                raise RuntimeError("Synthetic purge release timed out")
+            if lifespan_exited.is_set():
+                late_mutations.append("mutation after lifespan exit")
+            return 0
+        finally:
+            purge_active.clear()
+            purge_thread_exited.set()
+
+    monkeypatch.setattr("metaguard_api.main.purge_maintenance_for_api", blocking_purge)
+    database = Database(create_engine("sqlite:///:memory:"))
+    runtime = FileRuntime(
+        store=InMemoryTemporaryFileStore(max_bytes=128),
+        storage_key=_KEY,
+        processing_client=object(),
+        database=database,
+    )
+    app = create_app(Settings(_env_file=None, environment="test"), file_runtime=runtime)
+
+    async def exercise_lifespan():
+        context = app.router.lifespan_context(app)
+        await context.__aenter__()
+        shutdown_task = None
+        returned_early = False
+        try:
+            assert await asyncio.to_thread(purge_started.wait, 1)
+            shutdown_task = asyncio.create_task(context.__aexit__(None, None, None))
+            await asyncio.wait({shutdown_task}, timeout=0.05)
+            returned_early = shutdown_task.done()
+            if returned_early:
+                lifespan_exited.set()
+        finally:
+            release_purge.set()
+            if shutdown_task is not None:
+                await asyncio.wait_for(shutdown_task, timeout=1)
+            elif not app.state.maintenance_task.done():
+                await context.__aexit__(None, None, None)
+            lifespan_exited.set()
+
+        return returned_early
+
+    try:
+        returned_early = asyncio.run(exercise_lifespan())
+    finally:
+        release_purge.set()
+        database.close()
+
+    assert not returned_early
+    assert len(mutation_threads) == 1
+    assert purge_thread_exited.is_set()
+    assert not purge_active.is_set()
+    assert late_mutations == []
+    assert app.state.maintenance_task.done()
+    assert app.state.maintenance_task.cancelled()
+
+
+def test_api_purge_sets_a_bounded_postgres_statement_timeout(monkeypatch, capsys):
+    from metaguard_api import maintenance
+
+    statements = []
+
+    class PostgresDialect:
+        name = "postgresql"
+
+    class FakeSession:
+        def get_bind(self):
+            return SimpleNamespace(dialect=PostgresDialect())
+
+        def execute(self, statement):
+            statements.append(str(statement))
+
+    class FakeDatabase:
+        def transaction(self):
+            class Transaction:
+                def __enter__(self):
+                    return FakeSession()
+
+                def __exit__(self, *_args):
+                    return False
+
+            return Transaction()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "metaguard_api.maintenance.create_database", lambda *_a, **_k: FakeDatabase()
+    )
+    monkeypatch.setattr("metaguard_api.maintenance.purge_expired", lambda *_a, **_k: 0)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_expired_events", lambda *_a, **_k: 0)
+    monkeypatch.setattr("metaguard_api.maintenance.purge_expired_reports", lambda *_a, **_k: 0)
+    monkeypatch.setattr(
+        "metaguard_api.maintenance.purge_password_reset_proofs", lambda *_a, **_k: 0
+    )
+    monkeypatch.setattr(
+        "metaguard_api.maintenance.purge_expired_account_events", lambda *_a, **_k: 0
+    )
+    for helper in (
+        "purge_expired_login_email_challenges",
+        "purge_login_risk",
+        "purge_expired_security_alerts",
+    ):
+        monkeypatch.setattr(maintenance, helper, lambda *_a, **_k: 0)
+
+    assert maintenance.purge_maintenance_for_api() == 0
+    assert statements == ["SET LOCAL statement_timeout = '5000ms'"]
+    assert "Purged 0 expired file reports." in capsys.readouterr().out
+
+
+def test_concurrent_maintenance_cycles_are_idempotent_and_use_each_process_store(caplog):
+    first_store = InMemoryTemporaryFileStore(max_bytes=128)
+    second_store = InMemoryTemporaryFileStore(max_bytes=128)
+    for store, suffix in ((first_store, "first"), (second_store, "second")):
+        assert store.put(
+            f"expired-{suffix}",
+            "owner",
+            b"expired content",
+            key=_KEY,
+            now=_NOW - timedelta(minutes=10),
+        )
+        assert store.put(f"active-{suffix}", "owner", b"active content", key=_KEY, now=_NOW)
+    database_rows = {"expired-cache-report-event"}
+    calls = []
+    database_lock = RLock()
+
+    def purge_database():
+        with database_lock:
+            calls.append(len(database_rows))
+            database_rows.clear()
+        return 0
+
+    first_runtime = _process_runtime(first_store)
+    second_runtime = _process_runtime(second_store)
+    first_runtime._uploads = {
+        "expired-first": SimpleNamespace(expires_at=_NOW),
+        "active-first": SimpleNamespace(expires_at=_NOW + timedelta(minutes=1)),
+    }
+    second_runtime._uploads = {
+        "expired-second": SimpleNamespace(expires_at=_NOW),
+        "active-second": SimpleNamespace(expires_at=_NOW + timedelta(minutes=1)),
+    }
+
+    async def exercise():
+        await asyncio.gather(
+            run_maintenance_cycle(purge_database, first_runtime, now=_NOW),
+            run_maintenance_cycle(purge_database, second_runtime, now=_NOW),
+        )
+
+    asyncio.run(exercise())
+    assert sorted(calls) == [0, 1]
+    assert database_rows == set()
+    assert first_store.size_bytes == len(b"active content")
+    assert second_store.size_bytes == len(b"active content")
+    assert first_store.get("active-first", "owner", key=_KEY, now=_NOW) == b"active content"
+    assert second_store.get("active-second", "owner", key=_KEY, now=_NOW) == b"active content"
+    assert set(first_runtime._uploads) == {"active-first"}
+    assert set(second_runtime._uploads) == {"active-second"}
+    assert "active content" not in caplog.text
+    assert "expired content" not in caplog.text
+    assert _KEY.hex() not in caplog.text
+
+
+def test_database_failure_does_not_prevent_file_cleanup_or_log_sensitive_details(caplog):
+    store = InMemoryTemporaryFileStore(max_bytes=128)
+    assert store.put(
+        "expired-file",
+        "owner",
+        b"secret file content",
+        key=_KEY,
+        now=_NOW - timedelta(minutes=10),
+    )
+
+    def fail_database_purge():
+        raise RuntimeError("secret key content must not be logged")
+
+    asyncio.run(run_maintenance_cycle(fail_database_purge, _process_runtime(store), now=_NOW))
+    assert store.size_bytes == 0
+    assert "secret" not in caplog.text
+    assert "key content" not in caplog.text
+
+
+def test_maintenance_worker_retries_after_failure_on_the_next_interval():
+    results = iter([1, 0])
+    calls = []
+    waits = []
+
+    def purge_database():
+        result = next(results)
+        calls.append(result)
+        return result
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        if len(waits) == 2:
+            raise asyncio.CancelledError
+
+    async def exercise():
+        with pytest.raises(asyncio.CancelledError):
+            await run_maintenance_loop(
+                purge_database,
+                None,
+                interval_seconds=60,
+                clock=lambda: _NOW,
+                sleep=sleep,
+            )
+
+    asyncio.run(exercise())
+    assert calls == [1, 0]
+    assert waits == [60, 60]
+
+
+def test_clock_failure_does_not_skip_persisted_purge(caplog):
+    calls = []
+
+    def purge_database():
+        calls.append("purged")
+        return 0
+
+    def fail_clock():
+        raise RuntimeError("sensitive clock failure")
+
+    async def sleep(_seconds):
+        raise asyncio.CancelledError
+
+    async def exercise():
+        with pytest.raises(asyncio.CancelledError):
+            await run_maintenance_loop(
+                purge_database,
+                None,
+                clock=fail_clock,
+                sleep=sleep,
+            )
+
+    asyncio.run(exercise())
+    assert calls == ["purged"]
+    assert "sensitive" not in caplog.text
 
 
 def test_command_help_is_available_without_database() -> None:
@@ -202,6 +543,62 @@ def test_purge_command_also_enforces_security_event_retention(tmp_path, monkeypa
         assert len(session.scalars(select(SystemSecurityEvent)).all()) == 1
         assert session.scalar(select(SystemSecurityEvent.created_at)) == 200
     check_db.close()
+
+
+def test_joint_maintenance_expires_login_proofs_risk_and_security_alerts(monkeypatch, capsys):
+    from sqlalchemy import func, select
+
+    from metaguard_api.accounts import Account
+    from metaguard_api.login_email_challenge import (
+        LoginEmailChallenge,
+        prepare_login_email_challenge,
+    )
+    from metaguard_api.login_risk import (
+        AccountFamiliarAddress,
+        AccountLoginFailure,
+        login_address_digest,
+        record_login_failure,
+        record_login_success,
+    )
+    from metaguard_api.maintenance import purge_maintenance_for_api
+    from metaguard_api.security_alerts import SecurityAlertOutbox, enqueue_security_alert
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = Database(engine)
+    stale = _NOW - timedelta(days=30)
+    address = login_address_digest("owner", "192.0.2.50", "synthetic-test-key")
+    assert address is not None
+    with db.transaction() as session:
+        owner = Account(
+            id="owner",
+            email="owner@example.invalid",
+            password_hash="synthetic stored hash",
+            email_verified_at=stale,
+        )
+        session.add(owner)
+        session.flush()
+        assert prepare_login_email_challenge(session, owner, "a" * 43, address, now=stale)
+        assert not record_login_success(session, owner.id, address, now=stale)
+        record_login_failure(session, owner.id, address, now=stale)
+        assert enqueue_security_alert(session, owner.id, now=stale)
+
+    monkeypatch.setattr("metaguard_api.maintenance.time.time", lambda: _NOW.timestamp())
+    assert purge_maintenance_for_api(database=db) == 0
+    output = capsys.readouterr().out
+    assert "Purged 1 expired email login challenges." in output
+    assert "Purged 2 expired login risk entries." in output
+    assert "Purged 1 expired security alert entries." in output
+    with db.transaction() as session:
+        for table in (
+            LoginEmailChallenge,
+            AccountFamiliarAddress,
+            AccountLoginFailure,
+            SecurityAlertOutbox,
+        ):
+            assert session.scalar(select(func.count()).select_from(table)) == 0
+        assert session.get(Account, "owner") is not None
+    db.close()
 
 
 def test_maintenance_purges_expired_reports_and_preserves_active_reports(

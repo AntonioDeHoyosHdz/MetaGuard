@@ -4,7 +4,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from metaguard_api.database import Base
-from metaguard_api.reputation_cache import CacheVerdict, get_verdict, purge_expired, save_verdict
+from metaguard_api.reputation_cache import (
+    CachedVerdict,
+    CacheVerdict,
+    get_cached_verdict,
+    get_verdict,
+    purge_expired,
+    save_verdict,
+)
 
 
 @pytest.fixture
@@ -74,7 +81,47 @@ def test_cache_contains_only_minimal_fields() -> None:
         "digest",
         "verdict",
         "expires_at",
+        "analysis_stats_json",
+        "last_analysis_date",
     }
+    assert set(Base.metadata.tables["virustotal_request_quota"].columns.keys()) == {
+        "id",
+        "recent_1",
+        "recent_2",
+        "recent_3",
+        "recent_4",
+        "day_window",
+        "day_count",
+    }
+
+
+def test_cache_round_trips_only_minimized_analysis_statistics(session) -> None:
+    digest = "e" * 64
+    stats = {"malicious": 1, "undetected": 9}
+    save_verdict(
+        session,
+        digest,
+        CacheVerdict.MALICIOUS,
+        now=100,
+        last_analysis_stats=stats,
+        last_analysis_date=90,
+    )
+
+    assert get_cached_verdict(session, digest, now=100) == CachedVerdict(
+        CacheVerdict.MALICIOUS, stats, 90
+    )
+
+
+def test_cache_rejects_unapproved_statistics_or_provider_payload(session) -> None:
+    for stats in ({"filename": 1}, {"malicious": True}, {"malicious": -1}, {}):
+        with pytest.raises(ValueError):
+            save_verdict(
+                session,
+                "f" * 64,
+                CacheVerdict.MALICIOUS,
+                now=100,
+                last_analysis_stats=stats,
+            )
 
 
 def test_rejected_write_preserves_existing_entry(session) -> None:
