@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Presentación académica de MetaGuard: conoce los metadatos de tus fotos y documentos. Este sitio no acepta registros ni archivos.">
+  <title>MetaGuard — Presentación académica</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f2e9;
+      --ink: #171714;
+      --muted: #49473e;
+      --signal: #ffe600;
+      --line: #a39e8e;
+      font: 100%/1.55 system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    h1, h2, h3, p { margin: 0; }
+    a { color: inherit; text-underline-offset: .2em; }
+    a:focus-visible { outline: .2rem solid currentColor; outline-offset: .24rem; }
+    .wrap { width: min(69rem, calc(100% - 2rem)); margin-inline: auto; }
+    .masthead { background: var(--ink); color: var(--paper); }
+    .masthead-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding-block: .9rem; }
+    .brand { font-size: 1.3rem; letter-spacing: -.045em; font-weight: 850; }
+    .brand span { color: var(--signal); }
+    .masthead a { display: inline-block; padding-block: .65rem; font-size: .95rem; }
+    .masthead a:hover { color: var(--signal); }
+    .cover { padding-block: clamp(2.5rem, 8vw, 6.5rem); }
+    .cover-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: center; gap: clamp(2rem, 7vw, 6rem); }
+    .type-note { font: 750 .78rem/1.55 ui-monospace, monospace; letter-spacing: .045em; text-transform: uppercase; }
+    .status { display: inline-block; margin-block-end: 1rem; padding: .45rem .7rem; border: .12rem solid; background: var(--signal); }
+    h1 { max-width: 12ch; font-size: clamp(2.7rem, 7.5vw, 6.3rem); line-height: .99; letter-spacing: -.065em; text-wrap: balance; }
+    h1 strong { font-weight: inherit; text-decoration: underline .18em var(--signal); text-underline-offset: .05em; text-decoration-skip-ink: none; }
+    .lead { max-width: 47ch; margin-block-start: 1.5rem; color: var(--muted); font-size: clamp(1.06rem, 1.8vw, 1.2rem); }
+    .sample { margin: 0 .3rem .3rem 0; border: .14rem solid var(--ink); background: #fffdf5; box-shadow: .3rem .3rem 0 var(--ink); }
+    .sample figcaption { border-bottom: .14rem solid; padding: .7rem 1rem; background: var(--signal); }
+    .sample dl { margin: 0; padding-inline: 1rem; }
+    .sample dl div { padding-block: .85rem; }
+    .sample dl div + div { border-top: 1px solid var(--line); }
+    .sample dt { font-weight: 750; }
+    .sample dd { margin: .15rem 0 0; color: var(--muted); }
+    .details { padding-block: clamp(2rem, 6vw, 4.5rem); border-block: 1px solid var(--line); }
+    h2 { margin-block: .4rem 1.6rem; font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.08; letter-spacing: -.04em; }
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border: .14rem solid; background: #fffdf5; }
+    .steps li { min-width: 0; padding: clamp(.95rem, 2.4vw, 1.65rem); }
+    .steps li + li { border-inline-start: 1px solid var(--line); }
+    .steps h3 { margin-block: .45rem; font-size: 1.23rem; line-height: 1.2; }
+    .steps p, .privacy p { color: var(--muted); }
+    .privacy { max-width: 65ch; margin-block-start: 2rem; }
+    .privacy h3 { margin-block-end: .3rem; font-size: 1.23rem; }
+    footer { padding-block: 1.25rem; color: var(--muted); font-size: .9rem; }
+    @media (max-width: 44rem) {
+      .cover-layout, .steps { grid-template-columns: 1fr; }
+      .steps li + li { border-inline-start: 0; border-block-start: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap masthead-inner">
+      <p class="brand" translate="no">MetaGuard<span>.</span></p>
+      <nav aria-label="Navegación principal"><a href="#como-funciona">Cómo funciona</a></nav>
+    </div>
+  </header>
+  <main>
+    <section class="cover wrap cover-layout" aria-labelledby="titulo">
+      <div>
+        <p class="status type-note">Presentación académica — no acepta registros ni archivos</p>
+        <h1 id="titulo">Comparte el archivo, <strong>no su historia.</strong></h1>
+        <p class="lead">Una foto puede incluir dónde se tomó; un PDF, quién lo creó. MetaGuard es un proyecto académico que explora cómo identificar esos metadatos y quitarlos de una copia antes de compartirla.</p>
+      </div>
+      <figure class="sample">
+        <figcaption class="type-note">01 / Ejemplo ilustrativo</figcaption>
+        <dl>
+          <div><dt>Foto original</dt><dd>Puede contener ubicación, fecha y modelo del dispositivo.</dd></div>
+          <div><dt>Copia revisada</dt><dd>Conserva la imagen sin los metadatos que se quitaron. El original no cambia.</dd></div>
+        </dl>
+      </figure>
+    </section>
+    <section class="details" id="como-funciona" aria-labelledby="flujo">
+      <div class="wrap">
+        <p class="type-note">02 / Cómo funciona</p>
+        <h2 id="flujo">Del original a la copia.</h2>
+        <ol class="steps" role="list">
+          <li><span class="type-note" aria-hidden="true">01</span><h3>Identifica los metadatos</h3><p>Revisa si una foto JPG o PNG, o un documento PDF, contiene información que no quieres compartir.</p></li>
+          <li><span class="type-note" aria-hidden="true">02</span><h3>Separa la copia del original</h3><p>El flujo del proyecto genera una copia y conserva el archivo original.</p></li>
+          <li><span class="type-note" aria-hidden="true">03</span><h3>Revisa antes de compartir</h3><p>Quitar metadatos no borra nombres, rostros ni otros datos visibles en el archivo.</p></li>
+        </ol>
+        <div class="privacy">
+          <h3>Privacidad de esta página</h3>
+          <p>Esta presentación es informativa. No tiene formularios, cuentas ni funciones para analizar archivos.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap">MetaGuard · Proyecto académico sobre privacidad de archivos</footer>
+</body>
+</html>
