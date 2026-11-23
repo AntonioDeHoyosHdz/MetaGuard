@@ -1,5 +1,7 @@
 # Trazabilidad de la propuesta U2
 
+> **Corte histórico de Fase 0.** Se conserva como registro del inventario inicial, no como descripción vigente. Consulta el [estado actual de OBJ-01 a OBJ-07](entrega-academica.md#trazabilidad-u2) para preparar la entrega.
+
 Fecha de revisión: 30 de octubre de 2026. Alcance: inventario local del directorio de trabajo, sin implementar código.
 
 ## Objetivos y medidas de éxito

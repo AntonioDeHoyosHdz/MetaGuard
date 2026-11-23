@@ -4,7 +4,7 @@
 
 ## Recomendación provisional
 
-La menor factura probable es **frontend estático gratuito + una VM autogestionada**, pero no está lista para desplegarse. La VM concentra API, PostgreSQL y supervisor/worker en una sola máquina, reduce servicios facturados y a cambio exige operación, parcheo y backups propios. No se debe montar el socket de Docker dentro de FastAPI: falta definir el IPC con el supervisor y el traspaso efímero de llaves.
+En el corte de precios, la menor factura estimada era **frontend estático gratuito + una VM autogestionada**, pero la opción no está lista para desplegarse. La VM concentra API, PostgreSQL y supervisor/worker en una máquina; reduce servicios facturados a cambio de operar parches, backups y monitoreo. La API no debe tener acceso a Docker: el [IPC privado Linux](procesamiento-archivos.md#run-the-private-listener-on-linux) está implementado, no transfiere llaves y aún debe verificarse con distintos UID en staging.
 
 ## Comparación de costos
 
@@ -16,7 +16,7 @@ La menor factura probable es **frontend estático gratuito + una VM autogestiona
 
 Render publica un worker de 1 CPU/2 GB a $25/mes y PostgreSQL de 0.5 CPU/1 GB a $19/mes; el plan de base de datos de $6 tiene solo 256 MB y no se usa para estimar la opción prudente. El servicio web de $7 tiene 512 MB. Esta suma no sustituye una prueba de carga ni confirma que Render permita el aislamiento Docker requerido.
 
-**R2 es opcional, no está seleccionado:** el nivel gratuito publica 10 GB-mes, 1 millón de operaciones Clase A, 10 millones Clase B y egreso gratuito. El código aún no tiene un flujo de carga/almacenamiento por API; T3d deberá definir almacenamiento temporal cifrado, retención y purga antes de elegir si hace falta un object store.
+**R2 es opcional y no está seleccionado:** en el corte, el nivel gratuito ofrecía 10 GB-mes, un millón de operaciones Clase A, diez millones Clase B y egreso gratuito. La carga y descarga actuales usan [temporales cifrados en memoria](datos.md), con purga por proceso. No incluyas almacenamiento de objetos en la estimación base; requeriría una decisión aparte sobre persistencia y retención.
 
 ## Por qué no usar el nivel gratuito como base real
 
@@ -24,10 +24,8 @@ Render documenta que los servicios web Free duermen tras 15 minutos inactivos, n
 
 ## Bloqueos antes de seleccionar o desplegar
 
-- T2o y T2p siguen sin prueba en PostgreSQL real; la prueba opt-in actual se omite si no se habilita el harness local desechable.
-- T3c aún necesita prueba del runtime de contenedor. La instrucción vigente prohíbe builds tras cambios, así que no se construyó ni ejecutó la imagen.
-- Faltan el contrato de IPC API–worker y el uso efímero de llaves; no se debe dar autoridad Docker a la API.
-- Faltan la recuperación segura de respaldos, el contacto del aviso de privacidad y políticas finales de autenticación/correo.
+- La [evidencia local](validacion-staging.md#estado-observado) incluye PostgreSQL descartable, una restauración sintética y una imagen Docker disponible solo en WSL2. No sustituye la prueba de staging con el socket Unix nativo, permisos efectivos, UID separados y el aislamiento del proveedor elegido.
+- Faltan supervisión y alertas operativas, recuperación periódica de respaldos, TLS y registros del punto de entrada, y las políticas finales de autenticación/correo. El [aviso de privacidad](aviso-de-privacidad.md) permanece pendiente de revisión; no usar datos reales.
 - No crear servicios ni publicar hasta autorizar proveedor, cuenta, región y operación de despliegue. No se creó infraestructura ni se enviaron archivos.
 
 ## Fuentes oficiales consultadas
@@ -38,4 +36,4 @@ Render documenta que los servicios web Free duermen tras 15 minutos inactivos, n
 - [Cloudflare Pages: precios](https://www.cloudflare.com/en-gb/developer-platform/products/pages/) y [límites](https://developers.cloudflare.com/pages/platform/limits/) — plan Free y builds.
 - [Cloudflare R2: precios y cuota gratuita](https://developers.cloudflare.com/r2/pricing/) — almacenamiento, operaciones y egreso.
 
-Los importes cambian y se deben verificar de nuevo antes de contratar. No hubo build, conexión a cuentas de proveedores, creación de infraestructura ni despliegue en esta evaluación.
+Los importes corresponden al corte indicado y se deben verificar de nuevo antes de contratar. La evaluación de costos no creó infraestructura ni realizó un despliegue.

@@ -1,5 +1,26 @@
 # Primera evaluación de seguridad de MetaGuard
 
+## Repetición local — 21 de noviembre de 2026
+
+Se repitió el análisis sobre una copia de solo código del árbol de trabajo basado en `02009ea`, con `codeql database create --build-mode=none` y `codeql database analyze` usando las suites `security-extended` instaladas de CodeQL 2.27.4. No se incluyeron secretos, datos de usuarios, entornos, dependencias instaladas ni pruebas sintéticas como si fueran código de producción.
+
+| Alcance | Resultado |
+|---|---|
+| 10 archivos fuente del frontend | 0 resultados automáticos. |
+| 64 archivos Python del API y de migraciones | 7 resultados automáticos: 3 de hashing, 2 sobre cookies, 1 de logging y 1 de modo de archivo. |
+
+La lectura inicial distingue el SHA-1 de la consulta por rango de HIBP del almacenamiento Argon2id de contraseñas; los otros hashes señalados están en claves de cuotas y códigos de respaldo aleatorios. El resultado de logging apunta a un contador de registros vencidos, no al código de recuperación. La alerta del socket se refiere al modo de grupo `0660`, probado con grupo dedicado y comprobación de UID; no acredita que la configuración operativa de staging sea idéntica.
+
+El seguimiento manual de los dos avisos de cookies distinguió tres flujos: el estado preautenticado solo emite la cookie cuando genera un token nuevo; el desafío existente reusa el valor CSRF después de validar origen, longitud, alfabeto y coincidencia; y el inicio de sesión emite su token firmado y un CSRF aleatorio. La contraseña se usa para comprobar la credencial, no como valor de `Set-Cookie`. En esos flujos revisados no se confirmó escritura de una contraseña ni inyección de una cabecera. Esto no acredita todos los escenarios de cookies del navegador, del proxy o de una futura revisión.
+
+Los siete resultados se contabilizan y no se ocultaron con supresiones. Este primer corte es anterior a los cambios de historial y alertas.
+
+### Corte con historial y alertas
+
+La segunda ejecución examinó 12 archivos JavaScript/TypeScript, incluida la configuración de proxy de desarrollo, y 75 archivos Python de aplicación y migraciones. Informó 0 resultados para la interfaz y 8 para Python. El resultado nuevo corresponde al HMAC-SHA-256 que se usa para representar direcciones por cuenta, no para guardar contraseñas; las contraseñas siguen usando Argon2id. Los otros siete resultados son de los grupos descritos arriba. No se sustituyen los escaneos de dependencias e imagen ni se evalúa el punto de entrada real.
+
+El resto de esta página conserva el informe inicial del 17 de noviembre.
+
 **Fecha:** 17 de noviembre de 2026. **Resultado:** se corrigió una fuga de metadatos privados en PDF reproducida con archivos sintéticos. La consulta propia dejó de señalar la implementación corregida, pero no demuestra que el proyecto esté libre de vulnerabilidades.
 
 ## Alcance y método

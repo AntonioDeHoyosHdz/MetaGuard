@@ -38,22 +38,43 @@ Page-content verification accepts unfiltered streams and `FlateDecode` streams w
 
 `backend/tests/test_file_processing.py` builds synthetic JPEG, PNG, and PDF inputs in memory. It checks ICC removal, RGB `tRNS` transparency preservation, 16-bit PNG sample preservation, nested EXIF reporting, malformed-image rejection, PDF thumbnail/action/file-reference removal, bounded page-content decoding, lazy parser-warning rejection, trailer-ID removal in classic and xref-stream PDFs, compressed JavaScript sanitization, deterministic output, MIME/signature validation, size/dimension/page limits, encryption rejection, output reparsing, and the absence of plaintext-file writes by the processor.
 
-The proposal's seeded corpus (20 images and 10 active-content PDFs) was not available, so its 100% corpus target is **not** claimed. ExifTool and qpdf are not dependencies in this unit; the output checks use the same pinned Pillow and pikepdf libraries used for cleaning. Runtime isolation, hostile-file resource behavior under the supervisor, and production cleanup remain for T3c/T3d and corpus validation.
+The proposal's seeded corpus (20 files for metadata removal and 10 active-content PDFs) has not been verified, so its 100% corpus target is **not** claimed. ExifTool and qpdf are not dependencies of the processor; the internal output checks use the same pinned Pillow and pikepdf libraries as cleaning. Independent verification of the target corpus, resource behavior on extreme inputs, and production cleanup remain open.
 
 ## Supervisor runtime configuration
 
 The private `ProcessingSupervisor` now requires a `DockerRuntimeConfig` supplied by trusted host code: absolute Linux executable, local Unix socket path, absolute Docker configuration directory, and SHA-256-pinned image reference. No runtime value comes from an upload. The launch and cleanup processes receive only the configured Docker endpoint and configuration directory, not the inherited environment. This replaces the previous implicit executable and mutable image tag; callers must configure the runtime explicitly.
 
-Path and digest syntax do not verify ownership, executable integrity, socket identity, Docker configuration contents, or image provenance. Those are deployment responsibilities. The supervisor remains unconnected to the API; Linux Docker runtime, isolation, cleanup and Windows compatibility have not been verified.
+Path and digest syntax do not verify ownership, executable integrity, Docker socket identity, Docker configuration contents, or image provenance. Those are deployment responsibilities. The Linux runtime uses a separately configured private socket, not native Windows. The [recorded WSL2 exercise](validacion-staging.md#estado-observado) used a local, unpublished image pinned by digest to clean synthetic JPG, PNG and PDF inputs in Docker with network disabled, a read-only root and a non-root user. This does not establish staging operation or recovery after uncertain container cleanup.
 
-## Candidate API–supervisor frame codec
+## API–supervisor frame codec
 
 `processing_ipc_frame` defines a codec for exactly one version-1 frame: a 12-byte network-order header (`MGIP` magic, version, kind, zero reserved bits, unsigned payload length) and its payload. Request and success payloads must be nonempty and fit the existing worker request and response limits; error payloads are empty. The codec rejects invalid headers, lengths, truncation and trailing frames, and `decode_header` permits length validation before a transport reads a body.
 
 `processing_ipc_transport` adds Linux-only transfer over a caller-provided Unix stream: it checks the expected peer UID, applies an absolute operation deadline, rejects ancillary data and truncated control messages, closes received file descriptors, bounds frame reads, and requires EOF after the frame. The sender half-closes after one frame. Callers own socket closure on all outcomes. Shared protocol limits now live in a parser-free module, so importing the codec or transport does not load Pillow or pikepdf.
 
-`ProcessingRequestHandler` connects a caller-provided stream to the supervisor after transport authentication and the worker's strict request-schema validation. It returns a validated result or a generic empty error and closes the connection. One shared handler admits one job at a time and disables itself if container cleanup is uncertain. This in-memory latch is not orphan recovery: a future service must share the handler, stop accepting when disabled, and reconcile its own containers before restarting.
+`ProcessingRequestHandler` connects a caller-provided stream to the supervisor after transport authentication and the worker's strict request-schema validation. It returns a validated result or a generic empty error and closes the connection. One shared handler admits one job at a time and disables itself if container cleanup is uncertain.
 
-`ProcessingClient` prepares a bounded request for a trusted, configured Linux Unix socket, checks the expected server UID through the private transport, and validates the returned schema with the same parser-free validator used by the supervisor. The client does not import Pillow or pikepdf. A fragmented end-to-end exchange between the client and handler has been tested with simulated streams only; the client is not connected to an API route.
+`ProcessingClient` prepares a bounded request for a trusted, configured Linux Unix socket, checks the expected server UID through the private transport, and validates the returned schema with the same parser-free validator used by the supervisor. The client does not import Pillow or pikepdf. A fragmented client-to-handler exchange has been tested on simulated streams; file routes require an injected file runtime.
 
-This is **not an IPC service**: there is no listener, protected socket path, lifecycle or API wiring; a future service must also bound its queue and total memory. Peer credentials identify a process UID, not an end user, and do not establish socket ownership or UID mapping across namespaces. Tests use simulated streams on Windows; actual Linux kernel credentials, descriptor passing, deadlines, socket permissions and runtime isolation remain unverified. No real uploads are enabled by this change.
+## Run the private listener on Linux
+
+The listener serves one connection at a time, requests a fixed kernel backlog of 1, and checks the configured API UID before reading a request. It does not listen on TCP, build or pull images, or give the API Docker access. It is intended for a dedicated foreground process on Linux, not for native Windows.
+
+1. Provision separate, non-root accounts for the worker and API. Use a dedicated IPC group with the API as a member. Only the worker should have access to the approved local Docker runtime. Provision an empty directory such as `/run/metaguard-ipc` owned by the worker and the IPC group with mode `2750`; use no permissive ACLs. Its ancestors must be real directories owned by root or the worker and not writable by group or others. Use the actual path rather than a symlink such as `/var/run`.
+2. Make the already-prepared digest-pinned image available in that Docker runtime. From the prepared backend environment, run the CLI **as the worker user**, substituting the API UID, IPC group ID, approved Docker paths and actual digest:
+
+   ```bash
+   python -m metaguard_api.processing_service \
+     --socket /run/metaguard-ipc/processor.sock \
+     --api-uid 2000 --api-gid 3000 \
+     --docker-executable /usr/bin/docker \
+     --docker-socket /run/docker.sock \
+     --docker-config-dir /etc/metaguard/docker \
+     --worker-image "metaguard-processor@sha256:${WORKER_IMAGE_DIGEST:?set the approved 64-character digest}"
+   ```
+
+3. Configure the API-side `ProcessingClientConfig` with the **same socket path**, the worker's effective UID as `server_uid`, and a timeout long enough for supervised processing and cleanup (up to 120 seconds). Run the API and worker in a namespace configuration where the peer UID checks see the intended identities. UID checks authenticate processes, not end users.
+
+The newly bound socket is accessible only to its owner and configured group (mode `0660`). The listener refuses all pre-existing entries and removes only its own socket entry on orderly shutdown. SIGTERM and SIGINT stop accepting work and wait for the active handler, including its cleanup attempt. Avoid signaling the entire process group for an orderly stop, since that may also interrupt Docker. If the handler is disabled because cleanup or processing cannot be confirmed, the service stops with a nonzero status; do not automatically restart it. An operator must reconcile any orphan worker containers and verify any stale socket before relaunching. The process-local latch is not durable orphan tracking.
+
+The listener tests simulate the Unix socket and filesystem. The [local browser exercise](validacion-staging.md#ensayo-local-con-la-interfaz-actual) used a WSL adapter rather than this listener. Validate the native path with distinct Linux UIDs, effective socket permissions and kernel peer credentials, descriptor handling, and end-to-end staging isolation before using real files.

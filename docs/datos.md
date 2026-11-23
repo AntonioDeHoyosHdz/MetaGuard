@@ -1,30 +1,24 @@
 # Datos tratados y retenidos
 
-**Propósito:** inventariar entidades, finalidad, retención y protección conforme a la sección 3.2 de U2. **Estado:** hay rutas T3d2/T3d3 de carga, análisis, reporte y descarga detrás de dependencias inyectadas, además de una primitiva privada de archivo temporal cifrado en memoria. No hay runtime/llave productiva configurados ni se demostró retención/purga del producto; el flujo no es multi-worker durable.
+Este inventario distingue lo que guarda la demo del objetivo de retención de la propuesta U2. No es un aviso de privacidad ni acredita el borrado físico, el cifrado de todo PostgreSQL o el comportamiento de un despliegue con varias réplicas.
 
-## Inventario de datos
+| Dato | Finalidad | Tratamiento actual y límite |
+|---|---|---|
+| Archivo original y copia limpia | Analizar y permitir la descarga | AES-256-GCM en memoria del proceso, con identificadores de archivo y dueño como datos asociados; sin escritura a disco por el almacén. Hasta 10 minutos por archivo. La descarga exitosa y el borrado de un reporte retiran la copia limpia antes de ese plazo. No sobreviven a un reinicio. |
+| Reporte y permiso de descarga | Mostrar el resultado y autorizar una descarga | El reporte conserva por 24 horas: identificador, dueño, fechas y una proyección con MIME, categorías, verificación, dimensiones o páginas, indicadores y contadores. No guarda valores extraídos como GPS, número de serie, autor o URL. El dueño puede borrarlo antes. El permiso de un uso se guarda como digest SHA-256 y no dura más que la copia limpia. |
+| Eventos de sistema | Diagnóstico mínimo | Se registra la indisponibilidad de la comprobación de contraseñas con identificador aleatorio, tipo y fecha. No incluye correo, contraseña, IP ni dueño. El mantenimiento purga eventos de 30 días o más. |
+| Actividad de seguridad de la cuenta | Permitir al titular consultar los eventos recientes | Se guarda un identificador interno, el titular, el tipo de evento permitido, la fecha y la ventana de agrupación. El historial muestra solo tipo y fecha, hasta 50 eventos de los últimos 30 días. No incluye contraseñas, códigos, direcciones IP, contenido, nombre ni huella del archivo. El diagnóstico de sistema y este historial son registros distintos. |
+| Riesgo de inicio de sesión y verificación adicional | Limitar fallos por cuenta y dirección, y pedir prueba adicional sin bloquear globalmente | El estado de riesgo y las direcciones habituales usan un identificador criptográfico con llave por cuenta, no una IP en claro; la retención lógica es de hasta 30 días. Si se pide código de acceso por correo, se conserva su huella y la vinculación al navegador, a la cuenta y a la dirección, con vencimiento de cinco minutos. |
+| Cola de alertas de seguridad | Entregar avisos genéricos de actividad inusual cuando hay remitente | Conserva el identificador del titular y datos limitados de entrega y agrupación, no el correo, la IP ni el evento. El remitente recibe el correo verificado vigente al preparar la entrega. Se agrupan avisos durante quince minutos y no se intenta la entrega más allá del vencimiento operativo de diez minutos. |
+| Correo y código de verificación | Identificar y habilitar la cuenta | El correo está en texto en la fila de cuenta, con unicidad. Solo se acepta un código pendiente por cuenta y se guarda como digest; en la demo dura una hora. Se consume al verificar. Baja de cuenta y retención residual de respaldos siguen pendientes. |
+| Contraseña, TOTP y códigos de recuperación | Autenticar y recuperar MFA | La contraseña se guarda como hash Argon2id; el secreto TOTP, cifrado con AES-256-GCM; los códigos de respaldo, como digests SHA-256. Se registra si un respaldo ya probó un restablecimiento de contraseña. Al reemplazar TOTP se invalidan los códigos anteriores. |
+| Código de restablecimiento de contraseña | Cambiar una contraseña olvidada sin desactivar MFA | Para un correo verificado. Se guarda el digest del código, vinculado a la cuenta y a la versión de contraseña, y su vencimiento de 15 minutos. El código se invalida al cambiar la contraseña; el mantenimiento purga los vencidos. Un segundo factor es obligatorio si está habilitado. |
+| Sesión y CSRF | Autorizar una sesión revocable | PostgreSQL guarda los digests, no los valores de las cookies. La [sesión opaca](sesiones-opacas.md) está sujeta a caducidad y revocación. |
+| Caché de reputación | Reducir consultas al proveedor | Solo si VirusTotal se habilita por separado y hay consentimiento por archivo: hash, veredicto y, cuando están disponibles, conteos minimizados y fecha de análisis, sin vínculo a cuenta ni archivo en caché por 24 horas. El resultado detallado de reputación es inmediato y no se agrega al reporte persistido. |
 
-| Entidad/dato | Finalidad | Retención U2 | Protección U2 | Pendiente / riesgo |
-|---|---|---|---|---|
-| Archivo original + copia limpia | Procesar y permitir descarga | Original y copia limpia dejan de ser legibles tras 10 min según reloj UTC del llamador; copia limpia también se borra al descargar o al borrar explícitamente el reporte | `InMemoryTemporaryFileStore` cifra AES-256-GCM en memoria con llave de 32 bytes inyectada, AAD ligado a file/owner IDs y límite de bytes. No se escribe archivo en disco por esta primitiva. | T3d2/T3d3 rutas sintéticas existen, pero no hay runtime ni clave productiva. La expiración niega lectura y elimina en lectura/purga; no hay limpieza programada del store y el CLI de mantenimiento separado no puede borrarlo. No hay durabilidad entre procesos, retención multi-worker ni garantía de borrado físico de memoria. |
-| Reporte | Mostrar el resultado minimizado y permitir descargar la copia limpia | Fila DB: 24 h y borrado manual; token: máximo 10 min y no después del vencimiento de la copia limpia; copia limpia: 10 min desde análisis | `file_reports` conserva dueño, ID, timestamps y JSON con solo la proyección allowlisted `ProcessingReport`: MIME, categorías de nombres, verificación, dimensiones/páginas y contadores/flags. No guarda valores de GPS, serie, autor u otros metadatos extraídos. El token se persiste solo como digest SHA-256 y se consume una vez. | Pruebas con SQLite/mocks, sin prueba de concurrencia PostgreSQL ni DB/ruta de despliegue real. El maintenance command purga filas DB solo al ejecutarse; no está programado. No afirmar cifrado de campo ni protección de DB en reposo más allá del entorno no verificado. |
-| Eventos de seguridad, incluida IP | Monitoreo/alertas | 30 días | Cada usuario accede solo a los propios | Campos exactos, acceso operador y purga. |
-| Hash de contraseña | Autenticación | Mientras exista la cuenta | Argon2id; nunca texto claro | Parámetros Argon2id se decidirán en implementación. |
-| Secreto TOTP | MFA | Mientras exista la cuenta | AES-256-GCM | Gestión de llaves y recuperación. |
-| Caché de reputación | Respetar cuota de VirusTotal | 24 h | Solo hash/veredicto; sin contenido ni vínculo a usuario | Implementación interna parcial: entradas vencidas no se devuelven, pero la eliminación requiere programar la purga. Consulta y consentimiento pendientes. |
-| Correo de cuenta | Identificador de inicio de sesión y recuperación, según confirmación del usuario | Propuesto: mientras exista la cuenta; borrado pendiente | La primera migración lo almacena en texto plano y exige minúsculas y unicidad; protección de acceso y cifrado en reposo pendientes | Registro, verificación de correo, recuperación, política de normalización y retención verificable pendientes. |
+## Purga y minimización
 
-## Reglas de minimización
-
-- Nunca almacenar contraseña en claro, contenido de archivo en logs ni hash SHA-1 completo para la verificación de brechas.
-- Borrado de cuenta debe eliminar reportes y eventos asociados, según U2 §3.3; el detalle de retención residual por respaldos está pendiente.
-- Métricas/telemetría deben ser agregadas y no incluir rutas, GPS, nombres de archivo ni hashes completos sin necesidad aprobada.
-- No declarar cumplida una retención hasta probar purga y acceso por objeto. La prueba sintética no equivale a evidencia de un runtime real ni de PostgreSQL concurrente.
-
-## Qué pasa si falta
-
-Sin inventario no se pueden justificar finalidades, plazos, accesos ni cifrado, y se corre el riesgo de conservar datos personales fuera del alcance anunciado.
-
-La tabla inicial de cuentas es solo persistencia: todavía no existe un flujo de registro ni de recuperación. La normalización completa del correo, incluidos casos internacionales y direcciones con parte local sensible a mayúsculas, necesita definirse antes de habilitar esos flujos; no asumir que convertir a minúsculas funciona para todos los proveedores.
-
-La reversión de la migración 0002_accounts elimina la tabla y sus cuentas: requiere respaldo y autorización antes de ejecutarse con datos reales. La restricción SQL de minúsculas no garantiza normalización Unicode consistente entre bases de datos.
+- La expiración impide el acceso aunque todavía no se haya ejecutado el siguiente lote de purga. La tarea periódica de la API solo se inicia con su almacén de archivos en memoria y base de datos configurados; limpia tanto filas vencidas como el almacén de ese proceso. El mantenimiento separado solo puede purgar datos persistidos.
+- No deben registrarse cuerpos de carga/descarga, credenciales, valores de metadatos ni hashes completos de contraseñas. Hay que comprobar esta configuración también en el proxy y en la telemetría del despliegue.
+- Desactivar el proveedor de reputación evita transferir hashes en la demo. La limpieza de metadatos no borra identificadores visibles en los píxeles o en el contenido de un PDF.
+- La [validación de staging](validacion-staging.md) debe comprobar acceso por objeto, purga y restauración antes de datos reales. La propuesta de baja de cuenta y eliminación de datos asociados sigue pendiente; el [aviso de privacidad](aviso-de-privacidad.md) se revisa por separado.
