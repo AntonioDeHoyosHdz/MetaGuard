@@ -1,6 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from threading import Event
 from uuid import uuid4
 
@@ -241,12 +242,14 @@ def test_upload_stores_raw_bytes_and_analysis_returns_only_minimized_report(api_
     assert analysis.json()["virus_total"] == {
         "original": {
             "status": "key_unavailable",
+            "sha256": sha256(original).hexdigest(),
             "last_analysis_stats": None,
             "last_analysis_date": None,
             "report_url": None,
         },
         "cleaned": {
             "status": "key_unavailable",
+            "sha256": sha256(b"synthetic-cleaned-copy").hexdigest(),
             "last_analysis_stats": None,
             "last_analysis_date": None,
             "report_url": None,
@@ -273,7 +276,6 @@ def test_upload_stores_raw_bytes_and_analysis_returns_only_minimized_report(api_
 
 def test_analysis_only_queries_hashes_after_explicit_consent(api_factory):
     import json
-    from hashlib import sha256
 
     from metaguard_api.file_processing import ProcessedFile
 
@@ -304,6 +306,8 @@ def test_analysis_only_queries_hashes_after_explicit_consent(api_factory):
     assert denied.status_code == 200
     assert vt.calls == []
     assert denied.json()["virus_total"]["original"]["status"] == "not_requested"
+    assert denied.json()["virus_total"]["cleaned"]["status"] == "not_requested"
+    assert all("sha256" not in result for result in denied.json()["virus_total"].values())
 
     consented = client.post(
         f"/v1/analyses/{upload_id}",
@@ -316,14 +320,26 @@ def test_analysis_only_queries_hashes_after_explicit_consent(api_factory):
         sha256(cleaned).hexdigest(),
     ]
     assert all(call[1] is not None for call in vt.calls)
-    assert consented.json()["virus_total"]["original"]["status"] == "found"
-    assert consented.json()["virus_total"]["cleaned"]["report_url"].endswith(
-        sha256(cleaned).hexdigest()
-    )
+    assert consented.headers["Cache-Control"] == "no-store"
+    result = consented.json()
+    for label, content in (("original", original), ("cleaned", cleaned)):
+        verdict = result["virus_total"][label]
+        digest = sha256(content).hexdigest()
+        assert verdict["status"] == "found"
+        assert verdict["sha256"] == digest
+        assert verdict["report_url"].endswith(digest)
+    saved = client.get(f"/v1/reports/{result['report_id']}", headers=headers)
+    assert saved.status_code == 200
+    assert saved.json() == {key: value for key, value in result.items() if key != "virus_total"}
 
 
-def test_virustotal_exception_does_not_fail_file_analysis(api_factory):
-    vt = FakeVirusTotalClient(fail=True)
+@pytest.mark.parametrize("provider_enabled", [True, False])
+def test_unavailable_virustotal_returns_both_hashes(
+    api_factory, monkeypatch, caplog, provider_enabled
+):
+    vt = FakeVirusTotalClient(fail=True) if provider_enabled else None
+    if vt is None:
+        monkeypatch.setattr("metaguard_api.main.VirusTotalClient", lambda *args, **kwargs: None)
     _, _, app, _, _, _, _ = api_factory(virus_total_client=vt)
     client, headers = login_client(app)
     upload = client.post(
@@ -337,8 +353,14 @@ def test_virustotal_exception_does_not_fail_file_analysis(api_factory):
     )
 
     assert response.status_code == 200
-    assert response.json()["virus_total"]["original"]["status"] == "unavailable"
+    assert response.headers["Cache-Control"] == "no-store"
+    for label, content in (("original", b"synthetic"), ("cleaned", b"synthetic-cleaned-copy")):
+        verdict = response.json()["virus_total"][label]
+        assert verdict["status"] == "unavailable"
+        assert verdict["sha256"] == sha256(content).hexdigest()
+        assert verdict["report_url"] is None
     assert "private provider details" not in response.text
+    assert "private provider details" not in caplog.text
 
 
 def test_analysis_defaults_consent_to_false_and_rejects_unknown_fields(api_factory):
@@ -360,6 +382,72 @@ def test_analysis_defaults_consent_to_false_and_rejects_unknown_fields(api_facto
     assert default_consent.status_code == 200
     assert invalid_consent.status_code == 400
     assert len(processor.calls) == 1
+
+
+def test_pdf_inventory_is_immediate_owner_only_and_not_persisted(api_factory):
+    _, factory, app, _, processor, _, _ = api_factory()
+    client, headers = login_client(app)
+    preview = "https://example.invalid/document"
+    processor.process = lambda _, media_type: ProcessedFile(
+        b"synthetic-clean",
+        media_type,
+        ProcessingReport(media_type, (), True, page_count=1, uri_links_removed=2),
+        removed_pdf_links=(preview,),
+    )
+    upload = client.post(
+        "/v1/uploads",
+        content=b"%PDF-synthetic",
+        headers={**headers, "Content-Type": "application/pdf"},
+    )
+    path = f"/v1/analyses/{upload.json()['upload_id']}"
+    analysis = client.post(path, json={}, headers=headers)
+
+    assert analysis.status_code == 200
+    assert analysis.headers["Cache-Control"] == "no-store"
+    assert analysis.json()["removed_pdf_links"] == [preview]
+    assert analysis.json()["report"]["uri_links_removed"] == 2
+    report_id = analysis.json()["report_id"]
+    history_entry = client.get(f"/v1/reports/{report_id}", headers=headers)
+    history = client.get("/v1/reports", headers=headers)
+    assert history_entry.status_code == history.status_code == 200
+    assert preview not in history_entry.text
+    assert preview not in history.text
+    assert "removed_pdf_links" not in history_entry.json()
+    with factory.begin() as session:
+        assert preview not in session.get(FileReport, report_id).report_json
+    unauthorized = TestClient(app, base_url="https://api.example")
+    preauth = unauthorized.get("/v1/auth/status")
+    denied = unauthorized.post(
+        path,
+        json={},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": preauth.json()["csrf_token"]},
+    )
+    assert denied.status_code == 401
+    assert preview not in denied.text
+
+
+def test_pdf_inventory_from_direct_processor_is_validated_before_persisting(api_factory, caplog):
+    _, factory, app, _, processor, _, _ = api_factory()
+    client, headers = login_client(app)
+    raw = "https://example.invalid/document?value=synthetic"
+    processor.process = lambda _, media_type: ProcessedFile(
+        b"synthetic-clean",
+        media_type,
+        ProcessingReport(media_type, (), True, page_count=1, uri_links_removed=1),
+        removed_pdf_links=(raw,),
+    )
+    upload = client.post(
+        "/v1/uploads",
+        content=b"%PDF-synthetic",
+        headers={**headers, "Content-Type": "application/pdf"},
+    )
+    analysis = client.post(f"/v1/analyses/{upload.json()['upload_id']}", json={}, headers=headers)
+
+    assert analysis.status_code == 503
+    assert raw not in analysis.text
+    assert raw not in caplog.text
+    with factory.begin() as session:
+        assert session.query(FileReport).all() == []
 
 
 def test_upload_requires_exact_origin_csrf_and_an_authenticated_session(api_factory):
@@ -439,7 +527,8 @@ def test_upload_enforces_byte_limit_when_content_length_is_absent(api_factory):
 
 
 def test_analysis_is_owner_scoped_and_foreign_owner_cannot_trigger_processing(api_factory):
-    _, factory, app, _, processor, _, owner_id = api_factory()
+    reputation = FakeVirusTotalClient()
+    _, factory, app, _, processor, _, owner_id = api_factory(virus_total_client=reputation)
     owner, owner_headers = login_client(app)
     uploaded = owner.post(
         "/v1/uploads", content=b"synthetic", headers={**owner_headers, "Content-Type": "image/png"}
@@ -457,12 +546,17 @@ def test_analysis_is_owner_scoped_and_foreign_owner_cannot_trigger_processing(ap
     other, other_headers = login_client(app, email="other@example.test")
 
     response = other.post(
-        f"/v1/analyses/{uploaded.json()['upload_id']}", json={}, headers=other_headers
+        f"/v1/analyses/{uploaded.json()['upload_id']}",
+        json={"virus_total_consent": True},
+        headers=other_headers,
     )
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "not_found"
+    assert "virus_total" not in response.json()
+    assert "removed_pdf_links" not in response.json()
     assert processor.calls == []
+    assert reputation.calls == []
     assert owner_id != other_id
 
 

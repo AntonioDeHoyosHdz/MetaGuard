@@ -38,6 +38,7 @@ export type VirusTotalStatus =
 
 export interface VirusTotalFileResult {
   status: VirusTotalStatus
+  sha256?: string
   last_analysis_stats: Record<string, number> | null
   last_analysis_date: number | null
   report_url: string | null
@@ -50,6 +51,7 @@ export interface VirusTotalResults {
 
 export interface AnalysisResource extends ReportResource {
   virus_total: VirusTotalResults
+  removed_pdf_links?: string[]
 }
 
 export interface UploadResource {
@@ -85,6 +87,20 @@ function isReportResource(value: unknown): value is ReportResource {
   )
 }
 
+function reportFields({ report_id, report, created_at, expires_at }: ReportResource): ReportResource {
+  const {
+    media_type, metadata_categories, output_verified, width, height, page_count,
+    active_content_removed, uri_links_removed,
+  } = report
+  return {
+    report_id, created_at, expires_at,
+    report: {
+      media_type, metadata_categories, output_verified, width, height, page_count,
+      active_content_removed, uri_links_removed,
+    },
+  }
+}
+
 const virusTotalStatuses = new Set<VirusTotalStatus>([
   'found', 'not_found', 'not_requested', 'rate_limited', 'key_unavailable', 'unavailable',
 ])
@@ -92,10 +108,14 @@ const virusTotalStats = new Set([
   'confirmed-timeout', 'failure', 'harmless', 'malicious', 'suspicious', 'timeout',
   'type-unsupported', 'undetected',
 ])
-const virusTotalReportUrl = /^https:\/\/www\.virustotal\.com\/gui\/file\/[0-9a-f]{64}$/
+const virusTotalReportBase = 'https://www.virustotal.com/gui/file/'
+const isSha256 = (value: unknown): value is string =>
+  typeof value === 'string' && value.length === 64 && /^[0-9a-f]+$/.test(value)
 
-function isVirusTotalFileResult(value: unknown): value is VirusTotalFileResult {
+function isVirusTotalFileResult(value: unknown, consent: boolean): value is VirusTotalFileResult {
   if (!isRecord(value) || !virusTotalStatuses.has(value.status as VirusTotalStatus)) return false
+  const digest = value.sha256
+  if (digest !== undefined && (!consent || value.status === 'not_requested' || !isSha256(digest))) return false
   const stats = value.last_analysis_stats
   const validStats = stats === null || (
     isRecord(stats) && Object.keys(stats).length > 0 &&
@@ -104,18 +124,42 @@ function isVirusTotalFileResult(value: unknown): value is VirusTotalFileResult {
   )
   const validDate = value.last_analysis_date === null ||
     (typeof value.last_analysis_date === 'number' && Number.isSafeInteger(value.last_analysis_date) && value.last_analysis_date >= 0)
-  const validUrl = value.report_url === null ||
-    (typeof value.report_url === 'string' && virusTotalReportUrl.test(value.report_url))
+  const validUrl = value.report_url === null || (
+    typeof value.report_url === 'string' &&
+    value.report_url.startsWith(virusTotalReportBase) &&
+    isSha256(value.report_url.slice(virusTotalReportBase.length)) &&
+    (digest === undefined || value.report_url === `${virusTotalReportBase}${digest}`)
+  )
   return validStats && validDate && validUrl &&
     (value.status !== 'found' || (stats !== null && value.report_url !== null))
 }
 
-function isAnalysisResource(value: unknown): value is AnalysisResource {
-  if (!isRecord(value)) return false
+function isRedactedPdfDestination(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 384 || !/^https?:\/\//.test(value) ||
+      /[^!-~]|[?#"'\\]|%(?![\da-f]{2})/i.test(value)) return false
+  const authority = value.split('/', 3)[2]
+  if (!authority || authority.includes('@') || authority.endsWith(':')) return false
+  try {
+    const url = new URL(value)
+    return !!url.hostname && !url.username && !url.password && url.port !== '0'
+  } catch {
+    return false
+  }
+}
+
+function hasValidPdfDestinationPreviews(value: unknown, report: ProcessingReport): boolean {
+  if (value === undefined) return true
+  return report.media_type === 'application/pdf' &&
+    Array.isArray(value) && value.length <= 16 && value.length <= report.uri_links_removed &&
+    value.every(isRedactedPdfDestination) && new Set(value).size === value.length
+}
+
+function isAnalysisResource(value: unknown, consent: boolean): value is AnalysisResource {
+  if (!isRecord(value) || !isReportResource(value)) return false
   const verdict = value.virus_total
-  return isReportResource(value) && isRecord(verdict) &&
-    isVirusTotalFileResult(verdict.original) &&
-    isVirusTotalFileResult(verdict.cleaned)
+  return hasValidPdfDestinationPreviews(value.removed_pdf_links, value.report) && isRecord(verdict) &&
+    isVirusTotalFileResult(verdict.original, consent) &&
+    isVirusTotalFileResult(verdict.cleaned, consent)
 }
 
 async function request(
@@ -179,7 +223,12 @@ export async function analyzeUpload(
     contentType: 'application/json',
     body: JSON.stringify({ virus_total_consent: virusTotalConsent }),
   })
-  return readJson(response, isAnalysisResource)
+  const value = await readJson(response, (value): value is AnalysisResource => isAnalysisResource(value, virusTotalConsent))
+  return {
+    ...reportFields(value),
+    virus_total: value.virus_total,
+    ...(value.removed_pdf_links === undefined ? {} : { removed_pdf_links: value.removed_pdf_links }),
+  }
 }
 
 export async function getReports(csrfToken: string): Promise<ReportResource[]> {
@@ -187,12 +236,12 @@ export async function getReports(csrfToken: string): Promise<ReportResource[]> {
   const value = await readJson(response, (candidate): candidate is { reports: ReportResource[] } =>
     isRecord(candidate) && Array.isArray(candidate.reports) && candidate.reports.every(isReportResource),
   )
-  return value.reports
+  return value.reports.map(reportFields)
 }
 
 export async function getReport(reportId: string, csrfToken: string): Promise<ReportResource> {
   const response = await request(`/v1/reports/${encodeURIComponent(reportId)}`, csrfToken)
-  return readJson(response, isReportResource)
+  return reportFields(await readJson(response, isReportResource))
 }
 
 export async function issueDownloadToken(reportId: string, csrfToken: string): Promise<OneUseDownloadToken> {

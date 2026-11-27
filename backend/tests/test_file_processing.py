@@ -411,9 +411,54 @@ def test_pdf_removes_metadata_actions_annotations_and_embedded_files() -> None:
     assert result.report.output_verified is True
     assert result.report.page_count == 1
     assert result.report.uri_links_removed == 1
+    assert result.removed_pdf_links == ("https://private.example/",)
+    assert b"https://private.example/" not in result.cleaned_bytes
     assert "author" in result.report.metadata_categories
     assert {"gps", "path", "serial_number"}.issubset(set(result.report.metadata_categories))
     assert result.report.active_content_removed is True
+
+
+def test_pdf_link_inventory_redacts_deduplicates_and_caps_previews_not_count() -> None:
+    destinations = [
+        "https://example.invalid/document?example_query=placeholder#example-fragment",
+        "https://example.invalid/document?example_query=another",
+        "mailto:example@example.invalid",
+        "https://example.invalid/" + "a" * 400,
+        *(f"https://example.invalid/document/{i}" for i in range(18)),
+    ]
+    with pikepdf.Pdf.new() as pdf:
+        page = pdf.add_blank_page()
+        page.obj["/Annots"] = pikepdf.Array(
+            [
+                pikepdf.Dictionary(
+                    Subtype=pikepdf.Name.Link,
+                    A=pikepdf.Dictionary(S=pikepdf.Name.URI, URI=pikepdf.String(destination)),
+                )
+                for destination in destinations
+            ]
+        )
+        source = BytesIO()
+        pdf.save(source)
+    result = process_file(source.getvalue(), "application/pdf")
+
+    assert result.report.uri_links_removed == len(destinations)
+    assert result.removed_pdf_links == (
+        "https://example.invalid/document",
+        *(f"https://example.invalid/document/{i}" for i in range(15)),
+    )
+    with pikepdf.open(BytesIO(result.cleaned_bytes)) as clean:
+        assert "/Annots" not in clean.pages[0].obj
+
+
+def test_pdf_without_uri_actions_emits_empty_inventory() -> None:
+    with pikepdf.Pdf.new() as pdf:
+        pdf.add_blank_page()
+        source = BytesIO()
+        pdf.save(source)
+    result = process_file(source.getvalue(), "application/pdf")
+
+    assert result.report.uri_links_removed == 0
+    assert result.removed_pdf_links == ()
 
 
 def test_pdf_actions_inside_indirect_objects_are_removed() -> None:

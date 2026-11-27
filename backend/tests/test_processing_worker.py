@@ -41,6 +41,23 @@ def test_worker_accepts_only_bytes_and_mime_and_returns_processor_output(monkeyp
     assert result["media_type"] == "image/png"
 
 
+def test_worker_emits_pdf_inventory_as_top_level_field(monkeypatch) -> None:
+    def processor(_data: bytes, _content_type: str) -> ProcessedFile:
+        return ProcessedFile(
+            b"clean",
+            "application/pdf",
+            ProcessingReport("application/pdf", (), True, page_count=1, uri_links_removed=1),
+            removed_pdf_links=("https://example.invalid/document",),
+        )
+
+    monkeypatch.setattr("metaguard_api.processing_worker.process_file", processor)
+    result = json.loads(process_request(_request(content_type="application/pdf")))
+
+    assert result["removed_pdf_links"] == ["https://example.invalid/document"]
+    assert result["report"]["uri_links_removed"] == 1
+    assert "removed_pdf_links" not in result["report"]
+
+
 @pytest.mark.parametrize(
     "payload",
     [

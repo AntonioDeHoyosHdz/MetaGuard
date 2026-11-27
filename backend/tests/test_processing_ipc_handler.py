@@ -82,6 +82,26 @@ def test_valid_request_invokes_supervisor_and_emits_closed_response(io):
     assert connection.closed
 
 
+def test_pdf_inventory_survives_private_handler_round_trip(io):
+    io["payload"] = request().replace(b"image/png", b"application/pdf")
+    preview = "https://example.invalid/document"
+    supervisor = Supervisor()
+    supervisor.result = ProcessedFile(
+        b"clean",
+        "application/pdf",
+        ProcessingReport("application/pdf", (), True, page_count=1, uri_links_removed=1),
+        removed_pdf_links=(preview,),
+    )
+    connection = Connection()
+    handler.ProcessingRequestHandler(supervisor, expected_uid=123, timeout=5).handle(connection)
+
+    kind, raw = io["responses"][0]
+    assert kind is FrameKind.SUCCESS
+    assert json.loads(raw)["removed_pdf_links"] == [preview]
+    assert handler._decode_response(raw, "application/pdf") == supervisor.result
+    assert connection.closed
+
+
 @pytest.mark.parametrize(
     "payload",
     [

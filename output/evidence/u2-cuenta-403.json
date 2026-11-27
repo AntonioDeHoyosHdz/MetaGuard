@@ -1,0 +1,7 @@
+{
+  "time_utc": "2026-11-23T16:59:30.482Z",
+  "scope": "public HTTPS, fresh browser, unauthenticated read only",
+  "landing_status": 200,
+  "session_status": 403,
+  "session_response_format": "text/html"
+}

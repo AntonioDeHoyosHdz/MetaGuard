@@ -1,4 +1,4 @@
-"""Process-local rate limits for the opt-in development API."""
+"""Process-local rate limits for explicitly composed API runtimes."""
 
 from collections import deque
 from collections.abc import Callable
@@ -16,7 +16,7 @@ _MAX_BUDGET = 600
 @dataclass(frozen=True, slots=True)
 class _Policy:
     group: str
-    scope: Literal["ip", "account", "pair"]
+    scope: Literal["ip", "account", "pair", "service"]
     limit: int
     seconds: int
 
@@ -30,6 +30,7 @@ class LocalRateLimiter:
         *,
         clock: Callable[[], float] = monotonic,
         max_buckets: int = _MAX_BUCKETS,
+        verification_mail_budget: bool = False,
     ) -> None:
         if not 1 <= max_buckets <= _MAX_BUCKETS:
             raise ValueError("Invalid local rate-limit capacity")
@@ -106,6 +107,15 @@ class LocalRateLimiter:
             "downloads_per_minute_per_ip": (ip,),
             "downloads_per_minute_per_account": (account,),
         }
+        if verification_mail_budget:
+            # All preview mail actions reserve from one budget before touching the account.
+            mail = (
+                _Policy("verification-mail", "account", 3, 3_600),
+                _Policy("verification-mail", "service", 12, 3_600),
+                _Policy("verification-mail", "service", 48, 86_400),
+            )
+            for action in ("auth_register", "auth_resend_verification", "password_reset_request"):
+                self._policies[action] += mail
         if any(policy.limit > _MAX_BUDGET for group in self._policies.values() for policy in group):
             raise ValueError("Invalid local rate-limit budget")
         self._max_buckets = max_buckets
@@ -121,8 +131,8 @@ class LocalRateLimiter:
         keys = tuple(
             (
                 policy,
-                client_ip if policy.scope != "account" else "",
-                identity if policy.scope != "ip" else "",
+                client_ip if policy.scope in {"ip", "pair"} else "",
+                identity if policy.scope in {"account", "pair"} else "",
             )
             for policy in policies
         )

@@ -64,6 +64,19 @@ Esta tabla resume evidencia registrada hasta el 20 de noviembre de 2026; no conv
 - **Escaneo estático:** [CodeQL 2.27.4](reporte-seguridad-codeql.md#corte-con-historial-y-alertas) informó 0 resultados en 12 archivos JavaScript/TypeScript y 8 en 75 archivos Python del corte con historial y alertas; el resultado nuevo es un HMAC de direcciones por cuenta, no almacenamiento de contraseñas. Se usó una copia de solo código, sin compilar ni publicar el SARIF. `npm audit --offline --audit-level=high --json` informó 0 avisos con los datos locales; no valida la vigencia de la base de avisos. Faltan los escaneos de dependencias Python e imagen y la comprobación pasiva del punto de entrada.
 - **Aislamiento:** pasó un PNG sintético a través del [socket Unix nativo con UID separados](validacion-staging.md#evidencia-local-socket-unix-nativo) en Ubuntu/WSL2. Es una prueba del cliente, el servicio y el contenedor; no es un recorrido HTTP por el proxy de staging.
 
+### Evidencia añadida el 23 de noviembre de 2026
+
+| Alcance | Resultado observado | Límite de la evidencia |
+|---|---|---|
+| Mapa GPS incluido en el frontend | Edge mostró un punto EXIF de una imagen sintética. Seleccionar y revelar la ubicación generó cero solicitudes y el punto desapareció al cerrar sesión. El mapa usa un SVG incluido en lugar de Leaflet y teselas. | Ensayo local de la interfaz con sesión simulada; no prueba la disponibilidad de la versión publicada. |
+| Reputación | La respuesta inmediata muestra los dos SHA-256 solo con consentimiento; los avisos distinguen el original de la copia. Pruebas del backend confirmaron que no se agregan al historial. | La captura usa un proveedor simulado. No se consultó VirusTotal en vivo. La app no desinfecta archivos ni garantiza que sean seguros. |
+| Verificación independiente del corpus | ExifTool 12.76 confirmó la eliminación de 42 campos examinados en 20 imágenes sintéticas. Las 10 copias PDF inertes pasaron `qpdf 12.4.2 --check`, perdieron los marcadores comprobados y conservaron el render de Poppler. | El original sintético PDF-10 dio un aviso por un árbol de nombres vacío; la copia pasó sin avisos. Las diez muestras son inertes, no acreditan el criterio de diez PDF con contenido activo. |
+| Destinos retirados de PDF | El informe inmediato puede mostrar destinos redactados de un PDF sintético. Edge verificó que no eran clicables, que la consulta y el fragmento no aparecían, que el historial no mostraba el destino y que revelarlo no produjo solicitudes. | La captura usa el resultado real del procesador, con transporte y sesión simulados. La imagen fijada anterior no incorpora la lista. |
+| Corpus PDF con acciones benignas | Diez muestras de navegación, enlaces, formularios y adjuntos de texto pasaron qpdf 12.4.2. Cuatro tenían objetos comprimidos y una tenía un nombre de destino codificado. La copia y la referencia sin acciones se renderizaron igual en Poppler 26.07.0. | La inspección no ejecutó las acciones ni usó cargas maliciosas. No demuestra detección universal de malware. |
+| Disponibilidad del sitio | Edge obtuvo HTTPS 200 para la portada y 403 en la comprobación de sesión, sin credenciales. | Compatible con el ensayo previamente limitado por IP. No acredita registro ni entrada públicos. |
+
+Las capturas y el CSV de resultados por muestra acompañan el anexo académico. No contienen credenciales ni archivos de usuarios.
+
 ## Antes de usar datos reales
 
 Quedan pendientes la validación del entorno de staging separado, la revisión del [aviso de privacidad](aviso-de-privacidad.md), cabeceras y registros del punto de entrada, y los controles de retención y restauración operativos. Los ensayos ya registrados con archivos sintéticos no sustituyen esas comprobaciones. El [registro de verificaciones](../odd/tasks/metaguard-completion.md) conserva el historial técnico.

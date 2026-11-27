@@ -32,6 +32,15 @@ const fileReport = {
     cleaned: { status: 'not_requested', last_analysis_stats: null, last_analysis_date: null, report_url: null },
   },
 }
+const pdfFileReport = {
+  ...fileReport,
+  report: {
+    ...fileReport.report, media_type: 'application/pdf', width: null, height: null, page_count: 1,
+    active_content_removed: true, uri_links_removed: 2,
+  },
+}
+const pdfDestination = 'https://example.invalid/a'
+const pdfAnalysis = { ...pdfFileReport, removed_pdf_links: [pdfDestination] }
 
 const apiResponse = (body: unknown, status = 200, mediaType = 'image/png') => ({
   ok: status >= 200 && status < 300,
@@ -47,6 +56,25 @@ function renderView(view = '/#cuenta') {
 
 function navigateTo(name: string) {
   fireEvent.click(within(screen.getByRole('navigation', { name: 'Navegación principal' })).getByRole('link', { name }))
+}
+
+function selectPdf(name = 'sample.pdf') {
+  fireEvent.change(screen.getByLabelText(/Archivo para analizar/), {
+    target: { files: [new File(['synthetic PDF'], name, { type: 'application/pdf' })] },
+  })
+}
+
+function mockPdfUpload(analysis: Response | Promise<Response> = apiResponse(pdfAnalysis)) {
+  authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: true, csrfToken: 'csrf-files' })
+  const fetchMock = vi.fn(async (path: string) => {
+    if (path === '/v1/reports') return apiResponse({ reports: [pdfFileReport] })
+    if (path === '/v1/reports/report-123') return apiResponse(pdfFileReport)
+    if (path === '/v1/uploads') return apiResponse({ upload_id: 'upload-pdf', media_type: 'application/pdf' }, 201)
+    if (path === '/v1/analyses/upload-pdf') return analysis
+    throw new Error('Unexpected file request')
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 describe('MetaGuard file and report workflow', () => {
@@ -307,7 +335,7 @@ describe('MetaGuard file and report workflow', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Abrir menú' }))
   })
 
-  it('uploads a real file, displays the returned report, and does not claim VirusTotal scanned it', async () => {
+  it('shows the selected file name as plain text, sends raw bytes, and makes no VirusTotal claim', async () => {
     authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: true, csrfToken: 'csrf-files' })
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(apiResponse({ reports: [] }))
@@ -320,9 +348,13 @@ describe('MetaGuard file and report workflow', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'Analizar un archivo' }).getAttribute('href')).toBe('/#demostracion'))
     fireEvent.click(screen.getByRole('link', { name: 'Analizar un archivo' }))
     expect(await screen.findByText('Aún no hay reportes.')).toBeTruthy()
+    const selected = new File([new Uint8Array([0, 1, 255])], '<etiqueta-demo>foto</etiqueta-demo>.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText(/Archivo para analizar/), {
-      target: { files: [new File([new Uint8Array([0, 1, 255])], 'photo.png', { type: 'image/png' })] },
+      target: { files: [selected] },
     })
+    const nameDisplay = screen.getByText(/Archivo seleccionado:/)
+    expect(nameDisplay.textContent).toContain(selected.name)
+    expect(nameDisplay.querySelector('etiqueta-demo')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
 
     expect(await screen.findByText('Tu reporte está listo. Revisa los detalles o descarga la copia limpia.')).toBeTruthy()
@@ -332,6 +364,7 @@ describe('MetaGuard file and report workflow', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/v1/uploads', expect.objectContaining({
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'image/png', 'X-CSRF-Token': 'csrf-files' },
+      body: selected,
     }))
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/v1/analyses/upload-123', expect.objectContaining({
       method: 'POST', credentials: 'include',
@@ -346,12 +379,14 @@ describe('MetaGuard file and report workflow', () => {
       virus_total: {
         original: {
           status: 'found',
+          sha256: 'a'.repeat(64),
           last_analysis_stats: { malicious: 1, undetected: 4 },
           last_analysis_date: 1_800_000_000,
           report_url: `https://www.virustotal.com/gui/file/${'a'.repeat(64)}`,
         },
         cleaned: {
           status: 'not_found',
+          sha256: 'b'.repeat(64),
           last_analysis_stats: null,
           last_analysis_date: null,
           report_url: null,
@@ -377,11 +412,118 @@ describe('MetaGuard file and report workflow', () => {
 
     expect(await screen.findByText('Reporte VirusTotal del original')).toBeTruthy()
     expect(screen.getByText(/Detecciones maliciosas: 1/)).toBeTruthy()
+    expect(screen.getByText('a'.repeat(64))).toBeTruthy()
+    expect(screen.getByText('b'.repeat(64))).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toMatch(/no abras ni compartas.*original/i)
     expect(screen.getByRole('link', { name: 'Abrir reporte de VirusTotal' }).getAttribute('href'))
       .toBe(`https://www.virustotal.com/gui/file/${'a'.repeat(64)}`)
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/v1/analyses/upload-123', expect.objectContaining({
       body: JSON.stringify({ virus_total_consent: true }),
     }))
+  })
+
+  it('explains what was removed from a PDF without declaring it free of malware', async () => {
+    authApiMocks.getAuthStatus.mockResolvedValueOnce({ authenticated: true, csrfToken: 'csrf-files' })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(apiResponse({ reports: [] }))
+      .mockResolvedValueOnce(apiResponse({ upload_id: 'upload-pdf', media_type: 'application/pdf' }, 201))
+      .mockResolvedValueOnce(apiResponse(pdfFileReport))
+      .mockResolvedValueOnce(apiResponse({ reports: [pdfFileReport] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderView('/#demostracion')
+    await screen.findByText('Aún no hay reportes.')
+    selectPdf()
+    expect(screen.queryByRole('button', { name: /Revelar GPS/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
+
+    expect(await screen.findByText('Se eliminó contenido activo conocido del PDF.')).toBeTruthy()
+    expect(screen.getByText('Enlaces retirados: 2.')).toBeTruthy()
+    expect(screen.getByText(/no determina si el archivo contiene malware/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Mostrar destinos retirados' })).toBeNull()
+  })
+
+  it('reveals a transient PDF destination only as inert text without network or storage', async () => {
+    const fetchMock = mockPdfUpload()
+    const localStorageWrite = vi.spyOn(localStorage, 'setItem')
+    const sessionStorageWrite = vi.spyOn(sessionStorage, 'setItem')
+    renderView('/#demostracion')
+    await screen.findByText('Reporte de archivo PDF')
+    selectPdf()
+    fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
+
+    const reveal = await screen.findByRole('button', { name: 'Mostrar destinos retirados' })
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/v1/reports')).toHaveLength(2))
+    const requestCount = fetchMock.mock.calls.length
+    const beforeLocation = location.href
+    expect(screen.queryByText(pdfDestination)).toBeNull()
+    expect(reveal.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(reveal)
+    const detail = screen.getByRole('article', { name: 'Detalles del reporte' })
+    const shown = within(detail).getByText(pdfDestination)
+    expect(shown.tagName).toBe('CODE')
+    expect(within(detail).queryByRole('link')).toBeNull()
+    expect(screen.getByText(/sin parámetros de consulta ni fragmentos/)).toBeTruthy()
+    expect(screen.getByText(/Sin una vista adicional: 1/)).toBeTruthy()
+    expect(reveal.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar destinos retirados' }))
+    expect(screen.queryByText(pdfDestination)).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(requestCount)
+    expect(location.href).toBe(beforeLocation)
+    expect(localStorageWrite).not.toHaveBeenCalled()
+    expect(sessionStorageWrite).not.toHaveBeenCalled()
+  })
+
+  it.each(['selection', 'history', 'navigation', 'session', 'reanalysis'])(
+    'discards previously revealed PDF destinations on %s',
+    async (transition) => {
+      mockPdfUpload()
+      renderView('/#demostracion')
+      await screen.findByText('Reporte de archivo PDF')
+      selectPdf()
+      fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Mostrar destinos retirados' }))
+      expect(screen.getByText(pdfDestination)).toBeTruthy()
+
+      if (transition === 'selection') {
+        selectPdf('different.pdf')
+      } else if (transition === 'history') {
+        fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }))
+        await screen.findByText('Ya puedes leer los detalles del reporte.')
+      } else if (transition === 'navigation') {
+        navigateTo('Cuenta')
+        navigateTo('Archivos y reportes')
+      } else if (transition === 'session') {
+        act(() => window.dispatchEvent(new StorageEvent('storage', { key: 'metaguard.session-invalidation', newValue: 'lock' })))
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
+        expect(await screen.findByRole('button', { name: 'Mostrar destinos retirados' })).toBeTruthy()
+      }
+      expect(screen.queryByText(pdfDestination)).toBeNull()
+      if (transition !== 'reanalysis') {
+        expect(screen.queryByRole('button', { name: 'Mostrar destinos retirados' })).toBeNull()
+      }
+    },
+  )
+
+  it('does not restore PDF destinations from a response in flight when leaving the files view', async () => {
+    let completeAnalysis: (response: Response) => void = () => { throw new Error('Analysis did not start') }
+    const pending = new Promise<Response>((resolve) => { completeAnalysis = resolve })
+    mockPdfUpload(pending)
+    renderView('/#demostracion')
+    await screen.findByText('Reporte de archivo PDF')
+    selectPdf()
+    fireEvent.click(screen.getByRole('button', { name: 'Subir y analizar' }))
+    await screen.findByText('Analizando tu archivo…')
+
+    navigateTo('Cuenta')
+    navigateTo('Archivos y reportes')
+    await act(async () => completeAnalysis(apiResponse(pdfAnalysis)))
+
+    expect(await screen.findByText('Enlaces retirados: 2.')).toBeTruthy()
+    expect(screen.queryByText(pdfDestination)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mostrar destinos retirados' })).toBeNull()
   })
 
   it('clears selected file state and the input when one account logs out before another signs in', async () => {

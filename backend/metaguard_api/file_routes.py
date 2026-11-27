@@ -24,6 +24,7 @@ from metaguard_api.auth_routes import (
 from metaguard_api.database import Database
 from metaguard_api.file_signature import supported_file_signature
 from metaguard_api.file_storage import InMemoryTemporaryFileStore
+from metaguard_api.pdf_link_previews import valid_pdf_link_previews
 from metaguard_api.processing_ipc_client import ProcessingClient
 from metaguard_api.processing_limits import MAX_FILE_SIZE
 from metaguard_api.processing_types import ProcessedFile, ProcessingReport
@@ -243,11 +244,12 @@ def _virus_total_payload(
         not_requested = VirusTotalResult(status=VirusTotalStatus.NOT_REQUESTED).as_payload()
         return {"original": not_requested, "cleaned": not_requested}
 
+    # The fingerprints identify the server's own inputs, independently of provider availability.
+    digests = {"original": sha256(original).hexdigest(), "cleaned": sha256(cleaned).hexdigest()}
     unavailable = VirusTotalResult(status=VirusTotalStatus.UNAVAILABLE).as_payload()
     if client is None:
-        return {"original": unavailable, "cleaned": unavailable}
+        return {label: {**unavailable, "sha256": digest} for label, digest in digests.items()}
 
-    digests = {"original": sha256(original).hexdigest(), "cleaned": sha256(cleaned).hexdigest()}
     results: dict[str, dict[str, object]] = {}
     by_digest: dict[str, dict[str, object]] = {}
     for label, digest in digests.items():
@@ -255,12 +257,15 @@ def _virus_total_payload(
             try:
                 result = client.lookup(digest, database, now=int(now.timestamp()))
                 by_digest[digest] = (
-                    result.as_payload() if isinstance(result, VirusTotalResult) else unavailable
+                    result.as_payload()
+                    if isinstance(result, VirusTotalResult)
+                    and result.status is not VirusTotalStatus.NOT_REQUESTED
+                    else unavailable
                 )
             except Exception:
                 # Optional reputation failure never changes successful file analysis.
                 by_digest[digest] = unavailable
-        results[label] = by_digest[digest]
+        results[label] = {**by_digest[digest], "sha256": digest}
     return results
 
 
@@ -460,6 +465,12 @@ async def _analyse_owned_upload(
     report = _report_payload(processed.report, expected_media_type=metadata.content_type)
     if report is None or processed.media_type != metadata.content_type:
         return _error(503, "files_unavailable", "File processing is unavailable")
+    if processed.removed_pdf_links is not None and not valid_pdf_link_previews(
+        processed.removed_pdf_links,
+        media_type=metadata.content_type,
+        uri_count=processed.report.uri_links_removed,
+    ):
+        return _error(503, "files_unavailable", "File processing is unavailable")
 
     background = (
         account_event_task(
@@ -519,8 +530,11 @@ async def _analyse_owned_upload(
         consent=consent,
         now=now,
     )
+    response = {**resource, "virus_total": virus_total}
+    if processed.removed_pdf_links is not None:
+        response["removed_pdf_links"] = processed.removed_pdf_links
     return JSONResponse(
-        {**resource, "virus_total": virus_total},
+        response,
         headers={"Cache-Control": "no-store"},
         background=background,
     )

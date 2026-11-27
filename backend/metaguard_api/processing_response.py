@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 
+from metaguard_api.pdf_link_previews import valid_pdf_link_previews
 from metaguard_api.processing_errors import ProcessingSupervisorError
 from metaguard_api.processing_limits import (
     MAX_FILE_SIZE,
@@ -43,6 +44,8 @@ _REPORT_KEYS = frozenset(
         "uri_links_removed",
     }
 )
+_RESPONSE_KEYS = frozenset({"cleaned_bytes_base64", "media_type", "report"})
+_RESPONSE_KEYS_WITH_LINKS = _RESPONSE_KEYS | {"removed_pdf_links"}
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -63,11 +66,10 @@ def _decode_response(raw_response: bytes, expected_media_type: str) -> Processed
         )
     except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ProcessingSupervisorError("Processor returned an invalid response") from exc
-    if not isinstance(response, dict) or frozenset(response) != {
-        "cleaned_bytes_base64",
-        "media_type",
-        "report",
-    }:
+    if not isinstance(response, dict) or frozenset(response) not in (
+        _RESPONSE_KEYS,
+        _RESPONSE_KEYS_WITH_LINKS,
+    ):
         raise ProcessingSupervisorError("Processor returned an invalid response")
 
     encoded_data = response["cleaned_bytes_base64"]
@@ -116,6 +118,15 @@ def _decode_response(raw_response: bytes, expected_media_type: str) -> Processed
     ):
         raise ProcessingSupervisorError("Processor returned an invalid report")
 
+    link_previews = None
+    if "removed_pdf_links" in response:
+        previews = response["removed_pdf_links"]
+        if not isinstance(previews, list) or not valid_pdf_link_previews(
+            previews, media_type=media_type, uri_count=uri_count
+        ):
+            raise ProcessingSupervisorError("Processor returned an invalid response")
+        link_previews = tuple(previews)
+
     width, height, page_count = dimensions
     if media_type in {"image/jpeg", "image/png"}:
         if (
@@ -148,7 +159,12 @@ def _decode_response(raw_response: bytes, expected_media_type: str) -> Processed
         active_content_removed=active_content,
         uri_links_removed=uri_count,
     )
-    return ProcessedFile(cleaned_bytes=cleaned_bytes, media_type=media_type, report=report)
+    return ProcessedFile(
+        cleaned_bytes=cleaned_bytes,
+        media_type=media_type,
+        report=report,
+        removed_pdf_links=link_previews,
+    )
 
 
 def _is_integer(value: object) -> bool:

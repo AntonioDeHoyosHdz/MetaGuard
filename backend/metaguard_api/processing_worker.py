@@ -15,6 +15,7 @@ from metaguard_api.file_processing import (
     ProcessedFile,
     process_file,
 )
+from metaguard_api.pdf_link_previews import valid_pdf_link_previews
 from metaguard_api.processing_limits import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES
 
 _ALLOWED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
@@ -85,12 +86,21 @@ def process_request(request_bytes: bytes) -> bytes:
     ):
         raise WorkerProtocolError("Processor returned an invalid result")
 
+    payload: dict[str, object] = {
+        "cleaned_bytes_base64": base64.b64encode(result.cleaned_bytes).decode("ascii"),
+        "media_type": result.media_type,
+        "report": asdict(result.report),
+    }
+    if result.removed_pdf_links is not None:
+        if not valid_pdf_link_previews(
+            result.removed_pdf_links,
+            media_type=content_type,
+            uri_count=result.report.uri_links_removed,
+        ):
+            raise WorkerProtocolError("Processor returned an invalid result")
+        payload["removed_pdf_links"] = result.removed_pdf_links
     response = json.dumps(
-        {
-            "cleaned_bytes_base64": base64.b64encode(result.cleaned_bytes).decode("ascii"),
-            "media_type": result.media_type,
-            "report": asdict(result.report),
-        },
+        payload,
         separators=(",", ":"),
         ensure_ascii=True,
     ).encode("utf-8")

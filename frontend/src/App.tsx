@@ -8,6 +8,9 @@ import {
 } from 'lucide-react'
 import PrivacyHero, { LivingType } from './PrivacyHero'
 import AccountDossier, { type AccountView } from './AccountDossier'
+import LocalGpsPreview from './LocalGpsPreview'
+import PdfRemovedLinks from './PdfRemovedLinks'
+import ReputationFileResult from './ReputationFileResult'
 import './Studio.css'
 import {
   changePassword,
@@ -34,7 +37,6 @@ import {
   issueDownloadToken,
   uploadFile,
   type ReportResource,
-  type VirusTotalFileResult,
   type VirusTotalResults,
 } from './fileApi'
 
@@ -70,11 +72,6 @@ const categoryNames: Record<string, string> = {
   gps: 'Ubicación', image_metadata: 'Información de la imagen', manufacturer_notes: 'Notas del fabricante',
   path: 'Ruta del archivo', serial_number: 'Número de serie', software: 'Programa utilizado',
   thumbnail: 'Miniatura', xmp: 'Metadatos XMP',
-}
-const verdictNames: Record<string, string> = {
-  malicious: 'Detecciones maliciosas', suspicious: 'Sospechosos', undetected: 'Sin detecciones',
-  harmless: 'Sin riesgo identificado', timeout: 'Sin respuesta', 'confirmed-timeout': 'Tiempo agotado',
-  failure: 'Errores', 'type-unsupported': 'Formato no compatible',
 }
 const dateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' })
 function formatDate(value: string): string {
@@ -120,6 +117,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [virusTotalConsent, setVirusTotalConsent] = useState(false)
   const [virusTotalResult, setVirusTotalResult] = useState<VirusTotalResults | null>(null)
+  const [pdfDestinationPreview, setPdfDestinationPreview] = useState<{ generation: number; destinations: string[] } | null>(null)
   const [fileBusy, setFileBusy] = useState(false)
   const [fileStatus, setFileStatus] = useState('')
   const [fileError, setFileError] = useState('')
@@ -131,6 +129,7 @@ function App() {
   const [reportActionId, setReportActionId] = useState('')
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null)
   const workspaceVersion = useRef(0)
+  const pdfDestinationGeneration = useRef(0)
   const sessionEvents = useRef<ReturnType<typeof watchSession> | null>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -142,6 +141,11 @@ function App() {
   const restorePasswordFocus = useRef(false)
   const openRecoveryButton = useRef<HTMLButtonElement>(null)
   const returnMfaFocus = useRef<MfaFlow['kind'] | null>(null)
+
+  const clearPdfDestinationPreview = useCallback(() => {
+    pdfDestinationGeneration.current += 1
+    setPdfDestinationPreview(null)
+  }, [])
 
   const selectView = useCallback((next: View) => {
     const previous = currentView.current
@@ -156,12 +160,13 @@ function App() {
       restorePasswordFocus.current = false
     }
     if (previous === 'files') {
+      clearPdfDestinationPreview()
       setDeleteCandidate(null)
       deleteButton.current = null
     }
     setMenuOpen(false)
     setView(next)
-  }, [])
+  }, [clearPdfDestinationPreview])
 
   useEffect(() => {
     const syncRoute = () => selectView(resolveView(window.location))
@@ -257,6 +262,7 @@ function App() {
     clearSelectedFile()
     setVirusTotalConsent(false)
     setVirusTotalResult(null)
+    clearPdfDestinationPreview()
     setFileBusy(false)
     setFileStatus('')
     setFileError('')
@@ -400,6 +406,7 @@ function App() {
     void refreshAuthStatus()
     focusAccountInput.current = true
     setLoginEmail(email)
+    showAccountView('login')
     setAuthNotice('Contraseña restablecida. Inicia sesión con tu nueva contraseña.')
   }
 
@@ -634,6 +641,7 @@ function App() {
     setFileError(fileErrorMessage(error))
     setFileStatus('')
     setVirusTotalResult(null)
+    clearPdfDestinationPreview()
   }
 
   const submitFile = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -643,15 +651,20 @@ function App() {
     setFileBusy(true)
     setFileError('')
     setVirusTotalResult(null)
+    clearPdfDestinationPreview()
+    const generation = pdfDestinationGeneration.current
     setFileStatus('Subiendo archivo…')
     try {
       const upload = await uploadFile(selectedFile, csrfToken)
       if (version !== workspaceVersion.current) return
       setFileStatus('Analizando tu archivo…')
-      const report = await analyzeUpload(upload.uploadId, csrfToken, virusTotalConsent)
+      const { virus_total, removed_pdf_links, ...report } = await analyzeUpload(upload.uploadId, csrfToken, virusTotalConsent)
       if (version !== workspaceVersion.current) return
       setSelectedReport(report)
-      setVirusTotalResult(report.virus_total)
+      setVirusTotalResult(virus_total)
+      if (generation === pdfDestinationGeneration.current && removed_pdf_links !== undefined) {
+        setPdfDestinationPreview({ generation, destinations: removed_pdf_links })
+      }
       setFileStatus('Tu reporte está listo. Revisa los detalles o descarga la copia limpia.')
       setReportsRevision((revision) => revision + 1)
     } catch (error) {
@@ -667,6 +680,7 @@ function App() {
     setReportActionId(reportId)
     setFileError('')
     setVirusTotalResult(null)
+    clearPdfDestinationPreview()
     setFileStatus('Consultando el reporte…')
     try {
       const report = await getReport(reportId, csrfToken)
@@ -726,6 +740,7 @@ function App() {
     setReportActionId(reportId)
     setFileError('')
     setFileStatus('Eliminando reporte…')
+    clearPdfDestinationPreview()
     try {
       await deleteReport(reportId, csrfToken)
       if (version !== workspaceVersion.current) return
@@ -974,8 +989,16 @@ function App() {
             {authState === 'authenticated' && csrfToken && <>
               <form className="file-upload-form" onSubmit={submitFile} aria-busy={fileBusy}>
                 <label htmlFor="analysis-file">Archivo para analizar (JPG, PNG o PDF)</label>
-                <input ref={fileInput} id="analysis-file" name="file" type="file" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" onChange={(event) => { setSelectedFile(event.target.files?.[0] ?? null); setVirusTotalConsent(false); setVirusTotalResult(null); setFileError(''); setFileStatus('') }} disabled={fileActionsBlocked} />
+                <input ref={fileInput} id="analysis-file" name="file" type="file" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" onChange={(event) => {
+                  setSelectedFile(event.target.files?.[0] ?? null)
+                  setVirusTotalConsent(false)
+                  setVirusTotalResult(null)
+                  clearPdfDestinationPreview()
+                  setFileError('')
+                  setFileStatus('')
+                }} disabled={fileActionsBlocked} />
                 {selectedFile && <p className="selected-file"><FileImage size={17} /> Archivo seleccionado: {selectedFile.name}</p>}
+                {selectedFile && <LocalGpsPreview file={selectedFile} />}
                 <div className="auth-check-row">
                   <input
                     id="virus-total-consent"
@@ -995,7 +1018,7 @@ function App() {
               {virusTotalResult && <section className="report-detail" aria-label="Resultado de VirusTotal">
                 <h4>Resultado de VirusTotal</h4>
                 {(['original', 'cleaned'] as const).map((kind) => (
-                  <VirusTotalFileVerdict key={kind} kind={kind} result={virusTotalResult[kind]} />
+                  <ReputationFileResult key={kind} kind={kind} result={virusTotalResult[kind]} />
                 ))}
               </section>}
 
@@ -1034,6 +1057,17 @@ function App() {
                     : 'ninguno'}</p>
                   {selectedReport.report.width !== null && selectedReport.report.height !== null && <p>Dimensiones: {selectedReport.report.width} × {selectedReport.report.height}</p>}
                   {selectedReport.report.page_count !== null && <p>Páginas: {selectedReport.report.page_count}</p>}
+                  {selectedReport.report.media_type === 'application/pdf' && <>
+                    <p>{selectedReport.report.active_content_removed
+                      ? 'Se eliminó contenido activo conocido del PDF.'
+                      : 'No se identificó contenido activo conocido en el PDF.'}</p>
+                    <p>Enlaces retirados: {selectedReport.report.uri_links_removed}.</p>
+                    {pdfDestinationPreview && <PdfRemovedLinks
+                      key={pdfDestinationPreview.generation}
+                      destinations={pdfDestinationPreview.destinations}
+                      removedCount={selectedReport.report.uri_links_removed}
+                    />}
+                  </>}
                   <p>{selectedReport.report.output_verified ? 'Se verificó la copia después de limpiar sus metadatos.' : 'No se ha confirmado la verificación de la copia.'}</p>
                   <p>Este reporte describe los metadatos; no determina si el archivo contiene malware.</p>
                 </article>}
@@ -1085,27 +1119,6 @@ function App() {
       <footer className="footer section-wrap"><a className="brand footer-brand" href={viewHref('home')} onClick={event => navigate(event, 'home')}><span className="brand-mark"><ShieldCheck size={18} /></span><span>Meta<span className="brand-light">Guard</span><span className="brand-dot">.</span></span></a><p>Un poco más de privacidad, en cada archivo.</p><span>PRIVACIDAD DE ARCHIVOS</span><a href={viewHref('home')} onClick={event => navigate(event, 'home')} aria-label="Volver al inicio"><ChevronDown className="footer-up" size={18} /></a></footer>
     </div>
   )
-}
-
-function VirusTotalFileVerdict({ kind, result }: { kind: 'original' | 'cleaned'; result: VirusTotalFileResult }) {
-  const label = kind === 'original' ? 'del original' : 'de la copia limpia'
-  const status = {
-    found: 'Reporte encontrado',
-    not_found: 'No se encontró un reporte',
-    not_requested: 'VirusTotal no fue consultado.',
-    rate_limited: 'Se alcanzó el límite de consultas de VirusTotal.',
-    key_unavailable: 'No pudimos consultar VirusTotal. Aún puedes revisar los metadatos del archivo.',
-    unavailable: 'VirusTotal no estuvo disponible; el análisis del archivo continuó.',
-  }[result.status]
-  return <div>
-    <h5>Reporte VirusTotal {label}</h5>
-    <p>{status}</p>
-    {result.last_analysis_stats && <p>{Object.entries(result.last_analysis_stats)
-      .map(([name, count]) => `${verdictNames[name] ?? name}: ${count}`).join(' · ')}</p>}
-    {result.last_analysis_date !== null && <p>Último análisis: {new Date(result.last_analysis_date * 1000).toLocaleString('es')}</p>}
-    {result.status === 'found' && <p>Un resultado sin detecciones no garantiza que el archivo sea seguro.</p>}
-    {result.report_url && <a href={result.report_url} target="_blank" rel="noreferrer">Abrir reporte de VirusTotal</a>}
-  </div>
 }
 
 export default App

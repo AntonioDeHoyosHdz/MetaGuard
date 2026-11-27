@@ -1,0 +1,14 @@
+.pdf-removed-links {
+  border-block-start: 1px solid #c3bfb2;
+  margin-block: 12px;
+  padding-block-start: 12px;
+}
+
+.pdf-removed-links__list {
+  padding-inline-start: 1.25rem;
+}
+
+.pdf-removed-links__list code {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}

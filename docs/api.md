@@ -74,7 +74,11 @@ Todas las respuestas de autenticación y TOTP llevan `Cache-Control: no-store`. 
 
 La respuesta inmediata de análisis incluye `virus_total` con entradas `original` y `cleaned`. Cada una contiene `status`, `last_analysis_stats`, `last_analysis_date` y `report_url`. El estado puede ser `found`, `not_found`, `not_requested`, `rate_limited`, `key_unavailable` o `unavailable`.
 
-Solo con consentimiento explícito y proveedor habilitado se consultan los SHA-256 del original y de la copia limpia, nunca el archivo. La cuota persistida es de 4 consultas por 60 segundos y 500 por día UTC; la caché de reputación es independiente y no se vincula a la cuenta. El resultado no se guarda en los reportes del usuario ni condiciona la limpieza. Un resultado sin detecciones no prueba que el archivo sea seguro. La demo desactiva el proveedor.
+Si el titular autoriza la consulta, cada entrada incluye también `sha256` (64 caracteres hexadecimales en minúsculas), calculado sobre los bytes del original o de su copia. La huella se muestra aun cuando el proveedor no está disponible; no demuestra que se haya efectuado una consulta. Si no hay consentimiento, las huellas se omiten. No se añaden al reporte histórico.
+
+En PDF, un procesador compatible puede devolver `removed_pdf_links` en el nivel superior de la respuesta inmediata, separado del reporte persistido. La lista admite hasta 16 destinos HTTP(S) distintos, sin credenciales, consultas ni fragmentos. No se abren ni se consultan y solo se muestran como texto al elegir verlos; un mismo destino puede representar varios enlaces. `report.uri_links_removed` mantiene el número de acciones retiradas. Los procesadores anteriores y las respuestas de historial conservan solo el contador.
+
+Solo con consentimiento explícito y proveedor habilitado se consultan los SHA-256 del original y de la copia limpia, nunca el archivo. La cuota persistida es de 4 consultas por 60 segundos y 500 por día UTC; la caché de reputación es independiente y no se vincula a la cuenta. El resultado no se guarda en los reportes del usuario ni condiciona la limpieza. Si un reporte contiene detecciones, la interfaz advierte sobre el archivo correspondiente; no bloquea la descarga ni envía una alerta por correo por ese resultado. Un resultado sin detecciones no prueba que el archivo sea seguro. La demo desactiva el proveedor.
 
 ### Retención y purga
 

@@ -32,6 +32,17 @@ const response = (body: unknown, status = 200) => ({
   blob: async () => new Blob(['cleaned bytes'], { type: 'image/png' }),
 })
 
+const originalSha256 = 'a'.repeat(64)
+const cleanedSha256 = 'b'.repeat(64)
+const verdictUnavailable = {
+  status: 'unavailable', last_analysis_stats: null, last_analysis_date: null, report_url: null,
+}
+const pdfReport = {
+  ...report,
+  report: { ...report.report, media_type: 'application/pdf', width: null, height: null, page_count: 1, uri_links_removed: 2 },
+}
+const pdfDestination = 'https://example.invalid/a'
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('fileApi', () => {
@@ -77,12 +88,14 @@ describe('fileApi', () => {
       virus_total: {
         original: {
           status: 'found',
+          sha256: originalSha256,
           last_analysis_stats: { malicious: 1, undetected: 5 },
           last_analysis_date: 1_800_000_000,
-          report_url: `https://www.virustotal.com/gui/file/${'a'.repeat(64)}`,
+          report_url: `https://www.virustotal.com/gui/file/${originalSha256}`,
         },
         cleaned: {
           status: 'not_found',
+          sha256: cleanedSha256,
           last_analysis_stats: null,
           last_analysis_date: null,
           report_url: null,
@@ -114,6 +127,75 @@ describe('fileApi', () => {
     await expect(analyzeUpload('upload-123', 'csrf-current', true)).rejects.toMatchObject({ status: 0 })
   })
 
+  it.each([
+    ['empty digest', { sha256: '' }, true],
+    ['uppercase digest', { sha256: originalSha256.toUpperCase() }, true],
+    ['digest with a trailing newline', { sha256: `${originalSha256}\n` }, true],
+    ['non-string digest', { sha256: null }, true],
+    ['mismatched digest and report link', {
+      sha256: originalSha256,
+      status: 'found',
+      last_analysis_stats: { undetected: 1 },
+      report_url: `https://www.virustotal.com/gui/file/${cleanedSha256}`,
+    }, true],
+    ['digest in a non-requested result', { status: 'not_requested', sha256: originalSha256 }, true],
+    ['digest without request consent', { sha256: originalSha256 }, false],
+  ])('rejects %s from the analysis response', async (_name, override, consent) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      ...report,
+      virus_total: { original: { ...verdictUnavailable, ...override }, cleaned: verdictUnavailable },
+    })))
+
+    await expect(analyzeUpload('upload-123', 'csrf-current', consent)).rejects.toMatchObject({ status: 0 })
+  })
+
+  it.each([
+    ['omitted', undefined],
+    ['empty', []],
+    ['nonempty', [pdfDestination, 'http://example.invalid:8080/b']],
+  ] as const)(
+    'accepts a valid transient PDF destination inventory (%s)',
+    async (_name, previews) => {
+      const body = {
+        ...pdfReport,
+        virus_total: { original: verdictUnavailable, cleaned: verdictUnavailable },
+        ...(previews === undefined ? {} : { removed_pdf_links: previews }),
+      }
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)))
+
+      await expect(analyzeUpload('upload-123', 'csrf-current')).resolves.toEqual(body)
+    },
+  )
+
+  it.each([
+    ['not a list', null, 2, 'application/pdf'],
+    ['an image response', [pdfDestination], 2, 'image/png'],
+    ['a duplicate destination', [pdfDestination, pdfDestination], 2, 'application/pdf'],
+    ['more previews than removed actions', [pdfDestination], 0, 'application/pdf'],
+    ['more than sixteen previews', Array.from({ length: 17 }, (_, i) => `https://example.invalid/${i}`), 17, 'application/pdf'],
+    ['a long destination', [`https://example.invalid/${'a'.repeat(384)}`], 2, 'application/pdf'],
+    ['a relative reference', ['example.invalid/a'], 2, 'application/pdf'],
+    ['a blank authority', ['https:///example.invalid/a'], 2, 'application/pdf'],
+    ['userinfo', ['https://visitor@example.invalid/a'], 2, 'application/pdf'],
+    ['empty userinfo', ['https://@example.invalid/a'], 2, 'application/pdf'],
+    ['a query string', [`${pdfDestination}?test=1`], 2, 'application/pdf'],
+    ['a fragment', [`${pdfDestination}#page`], 2, 'application/pdf'],
+    ['a control character', [`${pdfDestination}\n`], 2, 'application/pdf'],
+    ['an invalid escape', [`${pdfDestination}%q5`], 2, 'application/pdf'],
+    ['a bad port', ['https://example.invalid:abc/a'], 2, 'application/pdf'],
+    ['an empty port', ['https://example.invalid:/a'], 2, 'application/pdf'],
+    ['port zero', ['https://example.invalid:0/a'], 2, 'application/pdf'],
+  ])('rejects %s in the PDF destination inventory', async (_name, previews, count, mediaType) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      ...pdfReport,
+      report: { ...pdfReport.report, media_type: mediaType, uri_links_removed: count },
+      virus_total: { original: verdictUnavailable, cleaned: verdictUnavailable },
+      removed_pdf_links: previews,
+    })))
+
+    await expect(analyzeUpload('upload-123', 'csrf-current')).rejects.toMatchObject({ status: 0, message: 'file_api_error' })
+  })
+
   it('lists and reads report resources with credentials and the current CSRF header', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response({ reports: [report] }))
@@ -131,6 +213,17 @@ describe('fileApi', () => {
       method: 'GET', credentials: 'include', cache: 'no-store',
       headers: { 'X-CSRF-Token': 'csrf-current' },
     }))
+  })
+
+  it('keeps destination previews out of historical report resources', async () => {
+    const extras = { removed_pdf_links: [pdfDestination] }
+    const unprojected = { ...pdfReport, ...extras, report: { ...pdfReport.report, ...extras } }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ reports: [unprojected] }))
+      .mockResolvedValueOnce(response(unprojected)))
+
+    await expect(getReports('csrf-current')).resolves.toEqual([pdfReport])
+    await expect(getReport('report-123', 'csrf-current')).resolves.toEqual(pdfReport)
   })
 
   it('issues one-use download tokens, downloads binary content, and deletes owner reports', async () => {

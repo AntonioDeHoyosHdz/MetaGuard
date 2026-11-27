@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import io
 import json
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,6 +144,50 @@ def test_supervisor_requires_verified_report() -> None:
         ProcessingSupervisor(runtime=_test_runtime(), runner=runner).process(b"source", "image/png")
 
 
+def test_supervisor_accepts_modern_pdf_inventory_and_unmodified_legacy_shape() -> None:
+    output = json.loads(_worker_result())
+    output["media_type"] = "application/pdf"
+    output["report"].update(
+        media_type="application/pdf", width=None, height=None, page_count=1, uri_links_removed=1
+    )
+    runner = FakeRunner()
+    supervisor = ProcessingSupervisor(runtime=_test_runtime(), runner=runner)
+    runner.result = subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b"")
+    legacy = supervisor.process(b"source", "application/pdf")
+    output["removed_pdf_links"] = ["https://example.invalid/document"]
+    runner.result = subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b"")
+    modern = supervisor.process(b"source", "application/pdf")
+
+    assert legacy.removed_pdf_links is None
+    assert modern.removed_pdf_links == ("https://example.invalid/document",)
+    assert modern.cleaned_bytes == legacy.cleaned_bytes
+    assert modern.report == legacy.report
+
+
+@pytest.mark.parametrize(
+    ("media_type", "links", "count"),
+    [
+        ("image/png", [], 0),
+        ("application/pdf", ["https://example.invalid/document"], 0),
+        ("application/pdf", ["https://example.invalid/document?value=example"], 1),
+        ("application/pdf", ["https://example.invalid/document"] * 2, 2),
+        ("application/pdf", None, 1),
+    ],
+)
+def test_supervisor_rejects_noncanonical_or_non_pdf_inventory(media_type, links, count) -> None:
+    output = json.loads(_worker_result())
+    output["media_type"] = media_type
+    output["report"]["media_type"] = media_type
+    if media_type == "application/pdf":
+        output["report"].update(width=None, height=None, page_count=1, uri_links_removed=count)
+    output["removed_pdf_links"] = links
+    runner = FakeRunner(subprocess.CompletedProcess([], 0, json.dumps(output).encode(), b""))
+    supervisor = ProcessingSupervisor(runtime=_test_runtime(), runner=runner)
+
+    with pytest.raises(ProcessingSupervisorError):
+        supervisor.process(b"source", media_type)
+
+
 @pytest.mark.parametrize(
     ("media_type", "report_changes"),
     [
@@ -247,10 +293,39 @@ def test_processor_image_copies_only_its_runtime_modules() -> None:
     assert set(copies[0][:-1]) == {
         "metaguard_api/__init__.py",
         "metaguard_api/file_processing.py",
+        "metaguard_api/pdf_link_previews.py",
         "metaguard_api/processing_limits.py",
         "metaguard_api/processing_types.py",
         "metaguard_api/processing_worker.py",
     }
+
+
+def test_processor_entrypoint_imports_using_only_image_sources(tmp_path: Path) -> None:
+    backend = Path(__file__).parents[1]
+    dockerfile = (backend / "Dockerfile.processor").read_text(encoding="utf-8")
+    copy_instruction = next(
+        line for line in dockerfile.replace("\\\n", " ").splitlines() if line.startswith("COPY ")
+    )
+    package = tmp_path / "metaguard_api"
+    package.mkdir()
+    for entry in copy_instruction.split()[1:-1]:
+        module = backend / entry
+        shutil.copyfile(module, package / module.name)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); import metaguard_api.processing_worker",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_processing_report_shape_is_explicit() -> None:

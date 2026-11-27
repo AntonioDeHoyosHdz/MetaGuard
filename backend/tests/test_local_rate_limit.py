@@ -43,6 +43,42 @@ def test_resend_budget_blocks_ip_and_identity_independently():
     assert limiter.allow(action, "ip-1", "identity-1")
 
 
+def test_opt_in_mail_budget_is_shared_by_recipient_across_actions_and_sources():
+    now = [0.0]
+    limiter = LocalRateLimiter(Settings(), clock=lambda: now[0], verification_mail_budget=True)
+    assert limiter.allow("auth_register", "ip-one", "recipient")
+    assert limiter.allow("auth_register", "ip-two", "recipient")
+    assert limiter.allow("auth_resend_verification", "ip-three", "recipient")
+    now[0] = 60.0
+    assert not limiter.allow("auth_resend_verification", "ip-four", "recipient")
+    assert not limiter.allow("auth_register", "ip-four", "recipient")
+    assert not limiter.allow("password_reset_request", "ip-four", "recipient")
+    assert limiter.allow("auth_register", "ip-four", "another-recipient")
+    assert limiter.allow("auth_login", "ip-four", "recipient")
+    now[0] = 3600.0
+    assert limiter.allow("auth_register", "ip-four", "recipient")
+
+
+def test_opt_in_mail_budget_limits_combined_hourly_and_daily_attempts():
+    now = [0.0]
+    limiter = LocalRateLimiter(Settings(), clock=lambda: now[0], verification_mail_budget=True)
+    for hour in range(4):
+        now[0] = hour * 3600.0
+        actions = ("auth_register", "auth_resend_verification", "password_reset_request")
+        for attempt in range(12):
+            action = actions[attempt % len(actions)]
+            identity = f"{hour}-{attempt}"
+            assert limiter.allow(action, f"ip-{identity}", identity)
+        for action in actions:
+            assert not limiter.allow(action, "new-ip", "new-recipient")
+    now[0] = 4 * 3600.0
+    assert not limiter.allow("auth_register", "new-ip", "new-recipient")
+    assert not limiter.allow("password_reset_request", "new-ip", "new-recipient")
+    assert limiter.allow("auth_login", "new-ip", "new-recipient")
+    now[0] = 86_400.0
+    assert limiter.allow("auth_register", "new-ip", "new-recipient")
+
+
 def test_limiter_does_not_evict_live_buckets_and_caps_admissions_atomically():
     now = [0.0]
     limiter = LocalRateLimiter(Settings(), clock=lambda: now[0], max_buckets=2)

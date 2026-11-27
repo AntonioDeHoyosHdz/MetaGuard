@@ -267,6 +267,44 @@ def test_login_rejects_invalid_credentials_generically(auth_env):
     assert runtime.rate_limiter.calls[-2][2] == runtime.rate_limiter.calls[-1][2]
 
 
+def test_login_rejects_unverified_account_with_generic_denial(auth_env):
+    unverified_email = "unverified@example.test"
+    with auth_env["factory"].begin() as session:
+        session.add(
+            Account(
+                id=str(uuid4()),
+                email=unverified_email,
+                password_hash=hash_password(auth_env["password"]),
+                email_verified_at=None,
+            )
+        )
+
+    client, _ = make_client(auth_env)
+    csrf = preauth(client)
+
+    # Correct password on unverified account must be rejected generically
+    response = client.post(
+        "/v1/auth/login",
+        json={"email": unverified_email, "password": auth_env["password"]},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"error": {"code": "unauthorized", "message": "Invalid credentials"}}
+    assert "__Host-metaguard_session" not in client.cookies
+
+    # Wrong password on unverified account must also be rejected generically
+    bad_pw_response = client.post(
+        "/v1/auth/login",
+        json={"email": unverified_email, "password": "wrong password"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )
+    assert bad_pw_response.status_code == 401
+    assert bad_pw_response.json() == {
+        "error": {"code": "unauthorized", "message": "Invalid credentials"}
+    }
+    assert "__Host-metaguard_session" not in client.cookies
+
+
 def test_auth_validation_errors_do_not_echo_credentials_or_codes(auth_env):
     client, _ = make_client(auth_env)
     csrf = preauth(client)

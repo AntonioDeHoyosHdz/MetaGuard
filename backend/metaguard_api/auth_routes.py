@@ -125,6 +125,7 @@ class AuthRuntime:
     email_sender: EmailSender | None = field(default=None, repr=False, compare=False)
     email_verification_lifetime: timedelta | None = None
     login_risk_enabled: bool = False
+    verification_delivery_after_commit: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -536,7 +537,18 @@ async def _read_auth_payload[T: BaseModel](request: Request, model: type[T]) -> 
         return None
 
 
-def _resend_if_eligible(runtime: AuthRuntime, email: str, password: str, now: datetime) -> None:
+def _send_verification_best_effort(sender: EmailSender, email: str, token: str) -> None:
+    try:
+        sender.send_verification(email, token)
+    except Exception:
+        # Admission was already reported and the account can request a new code.
+        # Do not attach the SMTP exception, recipient, or token to diagnostics.
+        pass
+
+
+def _resend_if_eligible(
+    runtime: AuthRuntime, email: str, password: str, now: datetime
+) -> str | None:
     try:
         with runtime.session_factory.begin() as session:
             token = prepare_email_verification_resend(
@@ -549,11 +561,12 @@ def _resend_if_eligible(runtime: AuthRuntime, email: str, password: str, now: da
             )
             if token is not None:
                 session.flush()
-                runtime.email_sender.send_verification(email, token)
+                if not runtime.verification_delivery_after_commit:
+                    runtime.email_sender.send_verification(email, token)
     except Exception:
-        # The transaction rolls back, retaining the prior code. Delivery cannot be
-        # atomic with commit; never expose errors specific to an eligible account.
-        pass
+        # A rollback retains the prior code. Never disclose account eligibility.
+        return None
+    return token if runtime.verification_delivery_after_commit else None
 
 
 def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRouter:
@@ -574,6 +587,7 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
         if now is None:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
         email = payload.email.strip().lower()
+        committed_delivery = None
         try:
             with runtime.session_factory.begin() as session:
                 try:
@@ -591,13 +605,25 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
                     # The email already exists. Leave the account and its token untouched.
                     pass
                 else:
-                    runtime.email_sender.send_verification(email, token)
+                    if runtime.verification_delivery_after_commit:
+                        committed_delivery = token
+                    else:
+                        runtime.email_sender.send_verification(email, token)
         except InvalidRegistrationInput:
             return _error(400, "invalid_registration", "Registration could not be completed")
         except Exception:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
         return JSONResponse(
-            {"registered": True}, status_code=202, headers={"Cache-Control": "no-store"}
+            {"registered": True},
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+            background=(
+                BackgroundTask(
+                    _send_verification_best_effort, runtime.email_sender, email, committed_delivery
+                )
+                if committed_delivery is not None
+                else None
+            ),
         )
 
     @router.post(
@@ -629,9 +655,16 @@ def create_auth_router(settings: Settings, runtime: AuthRuntime | None) -> APIRo
         now = _current_time(runtime)
         if now is None:
             return _error(503, "auth_unavailable", "Authentication is unavailable")
-        await run_in_threadpool(_resend_if_eligible, runtime, email, payload.password, now)
+        token = await run_in_threadpool(_resend_if_eligible, runtime, email, payload.password, now)
         return JSONResponse(
-            {"requested": True}, status_code=202, headers={"Cache-Control": "no-store"}
+            {"requested": True},
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+            background=(
+                BackgroundTask(_send_verification_best_effort, runtime.email_sender, email, token)
+                if token is not None
+                else None
+            ),
         )
 
     @router.post("/verify-email")

@@ -11,6 +11,7 @@ from itertools import chain
 import pikepdf
 from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
+from metaguard_api.pdf_link_previews import MAX_PDF_LINK_PREVIEWS, redact_pdf_link
 from metaguard_api.processing_limits import (
     MAX_FILE_SIZE,
     MAX_IMAGE_PIXELS,
@@ -290,7 +291,7 @@ def _process_pdf(data: bytes) -> ProcessedFile:
                 raise FileProcessingError("PDF parser reported a structural warning")
 
             private_objects = _collect_private_metadata_objects(pdf)
-            categories, active_content, uri_count = _scan_pdf(pdf, sanitize=True)
+            categories, active_content, uri_count, link_previews = _scan_pdf(pdf, sanitize=True)
             if pdf.get_warnings():
                 raise FileProcessingError("PDF parser reported a structural warning")
             _verify_page_content_streams(pdf)
@@ -328,6 +329,7 @@ def _process_pdf(data: bytes) -> ProcessedFile:
             active_content_removed=active_content,
             uri_links_removed=uri_count,
         ),
+        removed_pdf_links=link_previews,
     )
 
 
@@ -385,10 +387,11 @@ def _reject_retained_private_objects(
             raise FileProcessingError("PDF contains shared private metadata")
 
 
-def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]:
+def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int, tuple[str, ...]]:
     categories: set[str] = set()
     active_content = False
     uri_count = 0
+    link_previews: dict[str, None] = {}
     visited: set[tuple[str, int, int] | tuple[str, int]] = set()
     nodes_visited = 0
 
@@ -437,6 +440,12 @@ def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]
                 is_uri_action = False
             if is_uri_action:
                 uri_count += 1
+                if sanitize and len(link_previews) < MAX_PDF_LINK_PREVIEWS:
+                    destination = obj.get("/URI")
+                    if isinstance(destination, pikepdf.String):
+                        preview = redact_pdf_link(str(destination))
+                        if preview is not None:
+                            link_previews[preview] = None
             keys = list(obj.keys())
             for key in keys:
                 normalized_key = str(key)
@@ -517,14 +526,14 @@ def _scan_pdf(pdf: pikepdf.Pdf, *, sanitize: bool) -> tuple[set[str], bool, int]
     visit(pdf.trailer)
 
     # Remove URI action dictionaries wherever they occur, after the traversal has
-    # counted them. Re-walk parents to avoid leaking or consulting URI values.
+    # counted them. Re-walk parents to avoid retaining the original URI values.
     if sanitize and uri_count:
         for obj in pdf.objects:
             _remove_uri_actions(obj, set())
         _remove_uri_actions(pdf.Root, set())
         _remove_uri_actions(pdf.trailer, set())
 
-    return categories, active_content, uri_count
+    return categories, active_content, uri_count, tuple(link_previews)
 
 
 def _remove_uri_actions(obj: object, visited: set[tuple[int, int] | tuple[int]]) -> None:
@@ -558,7 +567,7 @@ def _verify_pdf(data: bytes, expected_pages: int) -> None:
             raise FileProcessingError("Sanitized PDF parser reported a warning")
         if pdf.docinfo or "/Metadata" in pdf.Root or "/ID" in pdf.trailer:
             raise FileProcessingError("Sanitized PDF still contains document metadata")
-        categories, active_content, uri_count = _scan_pdf(pdf, sanitize=False)
+        categories, active_content, uri_count, _ = _scan_pdf(pdf, sanitize=False)
         if "document_info" in categories:
             raise FileProcessingError("Sanitized PDF still contains document metadata")
         if pdf.get_warnings():

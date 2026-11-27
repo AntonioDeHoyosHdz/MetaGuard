@@ -21,12 +21,15 @@ from metaguard_api.processing_worker import WorkerProtocolError, decode_worker_r
 def _serialize_result(result: ProcessedFile, media_type: str) -> bytes:
     if not isinstance(result, ProcessedFile):
         raise ProcessingSupervisorError("Processor returned an invalid response")
+    payload: dict[str, object] = {
+        "cleaned_bytes_base64": base64.b64encode(result.cleaned_bytes).decode("ascii"),
+        "media_type": result.media_type,
+        "report": asdict(result.report),
+    }
+    if result.removed_pdf_links is not None:
+        payload["removed_pdf_links"] = result.removed_pdf_links
     response = json.dumps(
-        {
-            "cleaned_bytes_base64": base64.b64encode(result.cleaned_bytes).decode("ascii"),
-            "media_type": result.media_type,
-            "report": asdict(result.report),
-        },
+        payload,
         separators=(",", ":"),
         ensure_ascii=True,
     ).encode("utf-8")

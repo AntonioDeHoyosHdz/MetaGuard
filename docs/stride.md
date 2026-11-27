@@ -1,6 +1,6 @@
 # Modelo STRIDE de MetaGuard
 
-**Propósito:** registrar amenazas de OBJ-01 con control y prueba verificable. **Estado:** análisis de diseño; controles y pruebas descritos aquí son propuestas, no evidencia de implementación.
+**Propósito:** registrar amenazas de OBJ-01 con control y prueba verificable. **Estado:** el modelo de diseño se contrasta abajo con pruebas locales de la implementación. La evidencia no acredita el perímetro público ni sustituye la revisión del entorno.
 
 ## Amenazas y pruebas previstas
 
@@ -24,6 +24,27 @@
 ## Supuestos y límites
 
 El operador es confiable según U2; el atacante puede controlar archivos, solicitudes y cabeceras cliente. STRIDE es un inventario inicial, no certificación exhaustiva. Cada control debe enlazarse a implementación y prueba antes de marcar OBJ-01 cumplido.
+
+## Evidencia local por amenaza
+
+Los nombres de archivo enlazan las pruebas reutilizables. Las verificaciones con entradas sintéticas acreditan únicamente los controles indicados. Para los recorridos y límites del entorno, consulta [Validación de staging](validacion-staging.md).
+
+| ID | Control comprobable y prueba | Pendiente en el entorno objetivo |
+|---|---|---|
+| T-01 | [Supervisor e IPC](../backend/tests/test_processing_supervisor.py): opciones de aislamiento del proceso e importación del trabajador con solo los módulos declarados en la imagen. [Identidad del par IPC](../backend/tests/test_processing_ipc_handler.py) rechaza pares no autorizados. | Validar el digest candidato, el aislamiento efectivo y el socket de la versión desplegada. |
+| T-02 | [Procesador](../backend/tests/test_file_processing.py) limita páginas; [supervisor](../backend/tests/test_processing_supervisor.py) elimina el contenedor identificado tras un timeout simulado; [API](../backend/tests/test_file_routes.py) rechaza trabajos cuando no hay capacidad. | Observar la continuidad y los límites de la instancia candidata con cargas benignas y controladas. |
+| T-03 | [Runtime de staging](../backend/tests/test_staging_runtime.py) comprueba que los encabezados de reenvío no cambian al par de transporte. [Configuración versionada](../deploy/staging/upstream.nginx.conf) elimina los encabezados de identidad del cliente. | Comprobar la cuota en el proxy efectivo. Detrás del proxy, el par directo no equivale a la dirección del visitante; no activar políticas por IP real sin verificar su origen confiable. |
+| T-04 | [Rutas de reporte y descarga](../backend/tests/test_report_routes.py) comprueban digest, uso único, borrado al descargar y expiración a los diez minutos. | Verificar retención y purga operativa para las réplicas desplegadas. |
+| T-05 | [Política de riesgo](../backend/tests/test_login_risk.py) prueba bloqueo progresivo y que el riesgo agregado no bloquea globalmente. [Rutas](../backend/tests/test_login_risk_routes.py) verifican el desafío y su no reutilización. | Activación con identidad confiable por visitante y entrega de alertas en el entorno de destino. |
+| T-06 | [Reportes](../backend/tests/test_report_routes.py) y [eventos](../backend/tests/test_security_event_routes.py) comprueban listados por titular y rechazo de objetos ajenos. | Repetir con dos cuentas sintéticas en el despliegue candidato. |
+| T-07 | [Lector de secretos](../backend/tests/test_secrets.py) comprueba errores sin valores ni rutas; [contexto Docker](../backend/tests/test_processing_supervisor.py) excluye nombres de secretos y llaves. | Escaneo sanitizado y comprobación de permisos del usuario efectivo de cada servicio. |
+| T-08 | [Política local](../backend/tests/test_password_policy.py) prueba el respaldo ante indisponibilidad de HIBP; [rutas de archivo](../backend/tests/test_file_routes.py) preservan el análisis sin VirusTotal; [SMTP](../backend/tests/test_gmail_sender.py) no presenta como entregado un envío fallido. | Verificar continuidad y observabilidad con los transportes autorizados; las pruebas locales los simulan. |
+| T-09 | [Pruebas de interfaz](../frontend/src/App.test.tsx) verifican que un nombre con ángulos permanece como texto, que la carga envía bytes sin un campo de nombre y que la descarga usa un nombre derivado del tipo. | Verificar la CSP servida y las rutas de reporte del despliegue candidato. |
+| T-10 | [Autenticación](../backend/tests/test_auth_routes.py) comprueba atributos de cookies y revocación inmediata; [sesiones](../backend/tests/test_sessions.py) rechaza vencidas o revocadas. | Comprobar atributos y cierre en respuestas reales tras el proxy. |
+| T-11 | [Análisis](../backend/tests/test_file_routes.py) verifica consentimiento explícito y solo dos huellas; [transporte](../backend/tests/test_virustotal.py) verifica GET al destino fijo y respuesta minimizada. | Capturar solamente metadatos del egreso permitido en un ensayo consentido. No hay historial persistido de consentimiento por archivo. |
+| T-12 | [Inicio de sesión y MFA](../backend/tests/test_auth_routes.py) y [carga](../backend/tests/test_file_routes.py) verifican el origen exacto y su relación con CSRF. | Validar la configuración efectiva del proxy y los métodos que quedan expuestos. |
+| T-13 | [Rutas de carga](../backend/tests/test_file_routes.py) limitan bytes; [procesador](../backend/tests/test_file_processing.py) rechaza entradas con formato real distinto al declarado. | Confirmar el camino desde la admisión de bytes crudos hasta el trabajador candidato: aceptar una carga no significa aprobar su formato. |
+| T-14 | [Errores de autenticación](../backend/tests/test_auth_routes.py), [descarga](../backend/tests/test_report_routes.py), [procesamiento](../backend/tests/test_file_routes.py) y [mantenimiento](../backend/tests/test_maintenance.py) prueban que los errores y registros locales no reflejan canarios privados. | Revisar las salidas efectivas de proxy, API, trabajador y colector con canarios sintéticos. |
 
 ## Qué pasa si falta
 

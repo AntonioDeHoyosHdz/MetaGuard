@@ -1,0 +1,25 @@
+.reputation-result + .reputation-result {
+  border-block-start: 1px solid #c3bfb2;
+  margin-block-start: 16px;
+  padding-block-start: 16px;
+}
+
+.reputation-result__warning {
+  color: #4b2d00;
+  background-color: #fff2cc;
+  border-inline-start: 4px solid #815400;
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.reputation-result__warning--danger {
+  color: #681d14;
+  background-color: #ffe4df;
+  border-inline-start-color: #a02717;
+}
+
+.reputation-result__fingerprint code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}

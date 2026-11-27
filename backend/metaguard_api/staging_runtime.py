@@ -27,7 +27,7 @@ from metaguard_api.processing_ipc_client import ProcessingClient, ProcessingClie
 from metaguard_api.processing_limits import MAX_FILE_SIZE
 from metaguard_api.secrets import SecretName, SecretStore
 from metaguard_api.settings import Settings
-from metaguard_api.virustotal import VirusTotalResult, VirusTotalStatus
+from metaguard_api.virustotal import VirusTotalClient, VirusTotalResult, VirusTotalStatus
 
 _PRIVATE_NETWORKS = tuple(
     IPv4Network(cidr) for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -107,7 +107,7 @@ def _validate_boundary(
         raise ValueError("Staging requires a private ingress peer")
     if (
         not _is_private_ipv4(db.host)
-        or db.name != "metaguard_staging"
+        or db.name not in {"metaguard_staging", "metaguard_registration_trial"}
         or db.user != "metaguard_app"
         or _LIBPQ_OVERRIDES.intersection(os.environ)
     ):
@@ -181,8 +181,12 @@ def create_staging_app() -> FastAPI:
                 session_factory=_Transactions(database),
                 rate_limiter=LocalRateLimiter(settings),
                 signing_key=signing_key,
-                issuer="metaguard-staging",
-                audience="metaguard-staging-api",
+                issuer="metaguard-registration-trial"
+                if db_settings.name == "metaguard_registration_trial"
+                else "metaguard-staging",
+                audience="metaguard-registration-trial-api"
+                if db_settings.name == "metaguard_registration_trial"
+                else "metaguard-staging-api",
                 dummy_password_hash=hash_password(token_urlsafe(32)),
                 totp_encryption_key=totp_key,
                 totp_key_version=1,
@@ -195,7 +199,11 @@ def create_staging_app() -> FastAPI:
                 processing_client=ProcessingClient(processor),
                 database=database,
             ),
-            virus_total_client=_OfflineVirusTotal(),
+            virus_total_client=(
+                VirusTotalClient(secrets)
+                if (settings.secret_dir / SecretName.VIRUSTOTAL_API_KEY.value).is_file()
+                else _OfflineVirusTotal()
+            ),
             database=database,
             security_alert_sender=None,
         )
