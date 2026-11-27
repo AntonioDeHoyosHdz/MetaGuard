@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Tres direcciones visuales para MetaGuard." />
+    <title>MetaGuard — exploración visual</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e9eeec; color: #172522; }
+      button { font: inherit; }
+      .board { max-width: 1680px; margin: auto; padding: 36px clamp(18px, 4vw, 64px) 52px; }
+      .board-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+      .eyebrow { margin: 0 0 10px; color: #32685f; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+      h1 { max-width: 680px; margin: 0; font-family: Georgia, serif; font-size: clamp(32px, 4vw, 54px); font-weight: 500; letter-spacing: -.045em; line-height: 1.02; }
+      .board-note { max-width: 330px; margin: 0; color: #5a6965; font-size: 14px; line-height: 1.6; }
+      .options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: start; }
+      .option { min-width: 0; }
+      .option-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; min-height: 46px; padding: 0 3px; }
+      .option-head h2 { margin: 0; font-size: 15px; letter-spacing: -.02em; }
+      .option-head span { color: #687672; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      .screen { min-height: 650px; overflow: hidden; border: 1px solid #cbd5d1; border-radius: 16px; box-shadow: 0 14px 35px #273d3514; }
+      .option-selected .option-head span { color: #a2402d; }
+      .option-selected .screen { border-color: #b4472f; box-shadow: 0 0 0 2px #b4472f2e, 0 14px 35px #273d3514; }
+      .screen-top { display: flex; justify-content: space-between; align-items: center; height: 54px; padding: 0 20px; font-size: 11px; }
+      .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 750; letter-spacing: -.04em; }
+      .mark { display: grid; width: 22px; height: 22px; place-items: center; border: 1.5px solid currentColor; border-radius: 7px; font-size: 12px; }
+      .top-link { font-size: 10px; font-weight: 700; }
+      .preview { padding: 23px 22px 25px; }
+      .kicker { margin: 0 0 12px; font-size: 9px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+      .preview h3 { margin: 0; font-family: Georgia, serif; font-size: clamp(29px, 2.7vw, 40px); font-weight: 500; letter-spacing: -.055em; line-height: 1.02; }
+      .lead { max-width: 340px; margin: 13px 0 22px; font-size: 12px; line-height: 1.55; }
+      .drop { display: grid; min-height: 164px; align-content: center; justify-items: center; gap: 8px; padding: 20px; border: 1px dashed currentColor; border-radius: 12px; text-align: center; }
+      .drop-symbol { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 19px; }
+      .drop strong { font-size: 12px; }
+      .drop small { font-size: 10px; opacity: .72; }
+      .primary { width: 100%; min-height: 40px; margin-top: 12px; border: 0; border-radius: 8px; font-size: 11px; font-weight: 800; }
+      .consent { display: flex; gap: 8px; align-items: flex-start; margin-top: 13px; font-size: 9px; line-height: 1.45; }
+      .checkbox { flex: 0 0 13px; width: 13px; height: 13px; margin-top: 1px; border: 1px solid currentColor; border-radius: 3px; }
+      .result { margin-top: 20px; padding-top: 15px; border-top: 1px solid currentColor; }
+      .result-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 10px; font-weight: 800; }
+      .badge { padding: 5px 8px; border-radius: 999px; font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+      .result p { margin: 9px 0 0; font-size: 10px; line-height: 1.5; }
+      .result-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid currentColor; font-size: 9px; }
+      .result-row span:last-child { font-weight: 800; }
+      .footnote { margin: 15px 0 0; font-size: 9px; line-height: 1.5; opacity: .72; }
+
+      /* A — Editorial privacy studio */
+      .screen-a { background: #f7f6f0; color: #20312c; }
+      .screen-a .screen-top { border-bottom: 1px solid #dfe2d8; }
+      .screen-a .mark { color: #117a69; }
+      .screen-a .kicker { color: #177967; }
+      .screen-a .drop { background: #eeefe7; border-color: #9baea5; }
+      .screen-a .primary { background: #176b5e; color: #fff; }
+      .screen-a .badge { background: #dcefe5; color: #245c45; }
+
+      /* B — Quiet security console */
+      .screen-b { background: #102522; color: #f0f5ed; border-color: #27443e; }
+      .screen-b .screen-top { border-bottom: 1px solid #314c45; }
+      .screen-b .mark { color: #b7e76c; }
+      .screen-b .kicker { color: #bddf80; }
+      .screen-b .lead, .screen-b .consent, .screen-b .footnote { color: #b7c8bf; }
+      .screen-b .drop { background: #192f2b; border-color: #668b7d; }
+      .screen-b .primary { background: #c8ed80; color: #183126; }
+      .screen-b .badge { background: #2b483d; color: #c8ed80; }
+      .screen-b .result { border-color: #36544b; }
+      .screen-b .result-row { border-color: #304940; }
+
+      /* C — Open dossier */
+      .screen-c { background: #f3eee4; color: #292a27; }
+      .screen-c .screen-top { border-bottom: 1px solid #d8d0c2; }
+      .screen-c .mark { color: #b4472f; border-radius: 50%; }
+      .screen-c .kicker { color: #a2402d; }
+      .screen-c .preview h3 { max-width: 290px; font-family: "Segoe UI", sans-serif; font-size: clamp(26px, 2.5vw, 34px); font-weight: 760; letter-spacing: -.07em; }
+      .screen-c .drop { min-height: 144px; background: #e8e1d5; border-color: #a29a8b; border-radius: 4px; }
+      .screen-c .primary { background: #c94c32; color: #fffaf1; border-radius: 4px; }
+      .screen-c .badge { background: #f1d7ba; color: #763e26; border-radius: 4px; }
+      .screen-c .result { border-top: 2px solid #30302c; }
+      .screen-c .result-row { border-color: #c8c0b2; }
+
+      .score { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+      .score span { padding: 6px 8px; border: 1px solid #d0d8d3; border-radius: 999px; color: #53635d; font-size: 9px; font-weight: 700; }
+      @media (max-width: 1050px) { .options { grid-template-columns: 1fr; max-width: 650px; margin: auto; } .screen { min-height: 0; } .preview { padding: 28px; } .preview h3 { max-width: 430px; font-size: 42px; } .board-head { align-items: start; flex-direction: column; } }
+      @media (max-width: 520px) { .board { padding: 26px 14px 40px; } .preview { padding: 23px 18px; } .preview h3 { font-size: 34px; } .screen-top { padding: 0 16px; } }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="board-head">
+        <div>
+          <p class="eyebrow">MetaGuard · exploración de dirección</p>
+          <h1>Tres formas de hacer visible la privacidad.</h1>
+        </div>
+        <p class="board-note">Mockups estáticos con contenido ilustrativo, sin tocar los flujos actuales. El objetivo común: cargar un archivo, entender qué se comparte y revisar un resultado honesto.</p>
+      </header>
+      <section class="options" aria-label="Tres propuestas visuales para MetaGuard">
+        <article class="option">
+          <div class="option-head"><h2>A · Estudio de privacidad</h2><span>Editorial · sereno</span></div>
+          <div class="screen screen-a">
+            <div class="screen-top"><span class="wordmark"><span class="mark">M</span> MetaGuard</span><span class="top-link">TU PRIVACIDAD, PRIMERO ↗</span></div>
+            <div class="preview">
+              <p class="kicker">Un espacio para compartir mejor</p>
+              <h3>Menos rastro.<br />Más control.</h3>
+              <p class="lead">El original se procesa en MetaGuard. Si lo autorizás, VirusTotal recibe solo hashes SHA-256.</p>
+              <div class="drop"><span class="drop-symbol">↑</span><strong>Arrastra un archivo o selecciónalo</strong><small>JPG, PNG o PDF · hasta 25 MB</small></div>
+              <button class="primary" type="button">Elegir archivo</button>
+              <div class="consent"><span class="checkbox"></span><span>También consultar VirusTotal. Se enviarán solo los hashes SHA-256 del original y la copia limpia.</span></div>
+              <div class="result"><div class="result-title"><span>Ejemplo de análisis</span><span class="badge">Sin detecciones</span></div><p>Resultado ilustrativo: no es una garantía de seguridad.</p><div class="result-row"><span>Metadatos retirados</span><span>Resumen disponible</span></div></div>
+              <p class="footnote">Tu consentimiento para VirusTotal es opcional y empieza desactivado.</p>
+            </div>
+          </div>
+        </article>
+        <article class="option">
+          <div class="option-head"><h2>B · Consola tranquila</h2><span>Operativa · precisa</span></div>
+          <div class="screen screen-b">
+            <div class="screen-top"><span class="wordmark"><span class="mark">M</span> MetaGuard</span><span class="top-link">ARCHIVO PERSONAL&nbsp;&nbsp; ●</span></div>
+            <div class="preview">
+              <p class="kicker">01 / Sanitizar archivo</p>
+              <h3>Revisa antes<br />de compartir.</h3>
+              <p class="lead">Una secuencia clara: seleccionar, limpiar y comprobar. Vos decidís si consultamos reputación externa.</p>
+              <div class="drop"><span class="drop-symbol">＋</span><strong>Soltá tu archivo acá</strong><small>JPG · PNG · PDF &nbsp; / &nbsp; 25 MB máx.</small></div>
+              <button class="primary" type="button">Seleccionar archivo&nbsp; →</button>
+              <div class="consent"><span class="checkbox"></span><span>Consultar reputación en VirusTotal (opcional). Solo hashes; nunca el archivo.</span></div>
+              <div class="result"><div class="result-title"><span>Ejemplo de resultado</span><span class="badge">Análisis disponible</span></div><div class="result-row"><span>Privacidad</span><span>Resumen de metadatos</span></div><div class="result-row"><span>VirusTotal</span><span>Veredicto minimizado</span></div><p>Un resultado no detectado no significa que el archivo sea seguro.</p></div>
+              <p class="footnote">Cada archivo se analiza por separado. El permiso externo se reinicia al cambiarlo.</p>
+            </div>
+          </div>
+        </article>
+        <article class="option option-selected">
+          <div class="option-head"><h2>C · Dossier abierto</h2><span>Elegida · humana y directa</span></div>
+          <div class="screen screen-c">
+            <div class="screen-top"><span class="wordmark"><span class="mark">M</span> MetaGuard</span><span class="top-link">CÓMO CUIDAMOS TUS ARCHIVOS ↓</span></div>
+            <div class="preview">
+              <p class="kicker">Tu archivo cuenta su historia</p>
+              <h3>Quitamos lo que no querés revelar.</h3>
+              <p class="lead">Fotos y documentos pueden guardar datos invisibles. Revisalos y compartí una copia limpia.</p>
+              <div class="drop"><span class="drop-symbol">＋</span><strong>Empezá con un archivo</strong><small>Seleccioná desde tu dispositivo · JPG, PNG o PDF</small></div>
+              <button class="primary" type="button">Buscar en el dispositivo</button>
+              <div class="consent"><span class="checkbox"></span><span>Quiero consultar VirusTotal. Se comparten únicamente hashes SHA-256, nunca el archivo.</span></div>
+              <div class="result"><div class="result-title"><span>Resumen del análisis</span><span class="badge">Listo para revisar</span></div><div class="result-row"><span>Antes de compartir</span><span>Metadatos eliminados</span></div><div class="result-row"><span>Comprobación opcional</span><span>VirusTotal</span></div><p>La copia limpia se puede descargar o eliminar junto con el reporte.</p></div>
+              <p class="footnote">Transparencia primero: un resultado externo nunca se presenta como certificación de seguridad.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+      <div class="score" aria-label="Criterios de evaluación">
+        <span>Barra objetivo: 99% de claridad</span><span>Consentimiento visible</span><span>Sin promesas absolutas</span><span>Responsive</span><span>Sin animación en esta fase</span>
+      </div>
+    </main>
+  </body>
+</html>

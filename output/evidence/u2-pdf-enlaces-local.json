@@ -1,0 +1,8 @@
+{
+  "scope": "real PDF processor output; local development browser, simulated API and session",
+  "preview_requests": 0,
+  "external_requests": 0,
+  "non_clickable": true,
+  "query_and_fragment_absent": true,
+  "preview_absent_in_history": true
+}

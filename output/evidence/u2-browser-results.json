@@ -1,0 +1,12 @@
+{
+  "scope": "frontend development, synthetic file, simulated session and VirusTotal",
+  "gpsRevealRequests": 0,
+  "externalRequests": 0,
+  "explicitOptIns": 1,
+  "uploads": 1,
+  "resultsPurgedOnLogout": true,
+  "screenshots": [
+    "u2-gps-local.png",
+    "u2-reputacion-simulada.png"
+  ]
+}

@@ -1,0 +1,442 @@
+{
+  "schema": 1,
+  "origin": "Deterministic synthetic fixtures; no external assets",
+  "cases": [
+    {
+      "file": "IMG-01.jpg",
+      "sha256": "44c1a49b57acdb07cc773d93c7ebba20f27353c625b28bb2cf7abec8cd729323",
+      "seeded_fields": [
+        "Artist",
+        "Model"
+      ],
+      "expected_categories": [
+        "author",
+        "device_model",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-02.jpg",
+      "sha256": "334443b5e0a634c84c4987be8e10a139915c5638ba6b5d23228ec72737c2eba1",
+      "seeded_fields": [
+        "DateTimeOriginal"
+      ],
+      "expected_categories": [
+        "date_time",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-03.jpg",
+      "sha256": "982a78d99ad225094a1bb0283a2bd8f4752d65907fe1167a221f08153d8e8663",
+      "seeded_fields": [
+        "BodySerialNumber"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "serial_number"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-04.jpg",
+      "sha256": "7c13dd4ce9d955b71284a5dadc4c06e65be325d324fdf97ab805df8677522ca4",
+      "seeded_fields": [
+        "GPSInfo"
+      ],
+      "expected_categories": [
+        "gps",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-05.jpg",
+      "sha256": "657affdd96323e17ad5ec1b72524ae0d74b79cb27454ae94401ae65f73b3e417",
+      "seeded_fields": [
+        "Thumbnail"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "thumbnail"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-06.jpg",
+      "sha256": "5b2eeec352061902761c8a184fa435c992811732858b67a006cad74d942eaa14",
+      "seeded_fields": [
+        "Artist",
+        "Model"
+      ],
+      "expected_categories": [
+        "author",
+        "device_model",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-07.jpg",
+      "sha256": "5a31ad86c3516744b31d273988e8bdd76a58ba830531f2164f5ad2c2f9d35ad0",
+      "seeded_fields": [
+        "DateTimeOriginal"
+      ],
+      "expected_categories": [
+        "date_time",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-08.jpg",
+      "sha256": "b02c09ea80a58007fe52b9c2ff332c7083dda4d9aaf39d74690aa3ba48dd203e",
+      "seeded_fields": [
+        "BodySerialNumber"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "serial_number"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-09.jpg",
+      "sha256": "4fa7cb4a3006cd42c7af3bfdfe62934214d757da1d246ada4eeb8b6ebf9455ba",
+      "seeded_fields": [
+        "GPSInfo"
+      ],
+      "expected_categories": [
+        "gps",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-10.jpg",
+      "sha256": "035e329e5c68888db97f6b6ef3fe29df95d2e29c46628da6fd197ce6621f414b",
+      "seeded_fields": [
+        "Thumbnail"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "thumbnail"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-11.png",
+      "sha256": "aad32287698b32c098a8601881303683c5f51e7a8f7801c85efedb5c8b20ca77",
+      "seeded_fields": [
+        "Author",
+        "SourcePath"
+      ],
+      "expected_categories": [
+        "author",
+        "path"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-12.png",
+      "sha256": "5fcd79fbb1caf5ce01c91d6ce17f7c9decb19c1e85d7619246121a70289e364f",
+      "seeded_fields": [
+        "Description",
+        "Software"
+      ],
+      "expected_categories": [
+        "software"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-13.png",
+      "sha256": "38a7cc1a6380eddd625576a00ae595f5dc1966ed85bb14f39bde009ae5575fd5",
+      "seeded_fields": [
+        "GPSInfo"
+      ],
+      "expected_categories": [
+        "gps",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-14.png",
+      "sha256": "9998f55b93c0499c32eec9532489611ace0632f02ea193110b8a4ea3a0654cd4",
+      "seeded_fields": [
+        "DateTimeOriginal"
+      ],
+      "expected_categories": [
+        "date_time",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-15.png",
+      "sha256": "452fbf12fd956e27002bbbe9cf2a6fffc75739aa6984e8e25913e6466b49c4d1",
+      "seeded_fields": [
+        "BodySerialNumber"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "serial_number"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-16.png",
+      "sha256": "79659256e3ae30ba4201390bd142f48315ff67f5bd4792a1776fc5b3a78b5832",
+      "seeded_fields": [
+        "Author",
+        "SourcePath"
+      ],
+      "expected_categories": [
+        "author",
+        "path"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-17.png",
+      "sha256": "4ed3e32db1db8d4f946d42c588d505153f99a97b509edab9271652bfe61c788e",
+      "seeded_fields": [
+        "Description",
+        "Software"
+      ],
+      "expected_categories": [
+        "software"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-18.png",
+      "sha256": "f352b8aaa531ddbb2239d2d0b39d3cc6da70fb20841fb7a2f9b7be9860c25500",
+      "seeded_fields": [
+        "GPSInfo"
+      ],
+      "expected_categories": [
+        "gps",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-19.png",
+      "sha256": "4a126281c74534c904e1306ef265d90626de1f00d7248ebb7f0304998d53ae3f",
+      "seeded_fields": [
+        "DateTimeOriginal"
+      ],
+      "expected_categories": [
+        "date_time",
+        "image_metadata"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "IMG-20.png",
+      "sha256": "68dc916b39b1ea997d07a5f6547814ab873e129195b0bdb17301f485fd888770",
+      "seeded_fields": [
+        "BodySerialNumber"
+      ],
+      "expected_categories": [
+        "image_metadata",
+        "serial_number"
+      ],
+      "expected": "metadata-removed"
+    },
+    {
+      "file": "PDF-01.pdf",
+      "sha256": "b2238ea50e38d99c8d216b775f59c71877168008a3e5d50134b0d9a3c7ae4eaf",
+      "title_label": "OpenAction",
+      "empty_structure": "Root.OpenAction",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "file": "PDF-02.pdf",
+      "sha256": "1561c685aa1e921c78f59432674d788dfe85ab13c3c812c4bb19d627d657fb8d",
+      "title_label": "AA",
+      "empty_structure": "Page.AA",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "file": "PDF-03.pdf",
+      "sha256": "72f380f9897cc0ab1dbdf501176a228bed3f64f3b398396941af6887e6dc4357",
+      "title_label": "JavaScript",
+      "empty_structure": "Root.Names.JavaScript",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "file": "PDF-04.pdf",
+      "sha256": "af72719bd86425adf7b9828fe26830211d8227f6daf38d4a202f6bf09604f455",
+      "title_label": "Launch",
+      "empty_structure": null,
+      "expected": "title-removed"
+    },
+    {
+      "file": "PDF-05.pdf",
+      "sha256": "98649e6b7fe03311386f38b3642a2dc48b035d16e625a0f4716c83f061810737",
+      "title_label": "GoToR",
+      "empty_structure": null,
+      "expected": "title-removed"
+    },
+    {
+      "file": "PDF-06.pdf",
+      "sha256": "2bf299bee728742876585c0898528107822e9d8a9b2fbab220a81fa20ce4f2b5",
+      "title_label": "SubmitForm",
+      "empty_structure": null,
+      "expected": "title-removed"
+    },
+    {
+      "file": "PDF-07.pdf",
+      "sha256": "bd485a94f27b1c724ebd0a093d4d2d6803a86e1e837c6e335e7cba6addd2ed95",
+      "title_label": "ImportData",
+      "empty_structure": null,
+      "expected": "title-removed"
+    },
+    {
+      "file": "PDF-08.pdf",
+      "sha256": "e3832dfb81af9f8ddfc5478d61cc9a5e2c926d233a23425d3a2f821f5648744b",
+      "title_label": "RichMedia and file annotation",
+      "empty_structure": "Page.Annots",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "file": "PDF-09.pdf",
+      "sha256": "50dc86f8e6166c844ab06dce2f21213087eb71136f4d409df292819d1ff1d49e",
+      "title_label": "XFA",
+      "empty_structure": "Root.AcroForm.Fields",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "file": "PDF-10.pdf",
+      "sha256": "4db62ca85fc57503b8495fc8357957108eeee2685f25ae2b76a9cf08e0b679c3",
+      "title_label": "EmbeddedFiles",
+      "empty_structure": "Root.Names.EmbeddedFiles",
+      "expected": "title-and-empty-structure-removed"
+    },
+    {
+      "id": "PWD-01",
+      "scenario": "matched",
+      "sha256": "cc2b8d831f602e500b76043445e1143d9b35505a2c2911e4478625a6d261d03b",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-02",
+      "scenario": "matched",
+      "sha256": "91416f9f96637440f228c4055a30d83dfedef2c6e42059e6fcec7409d9847b29",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-03",
+      "scenario": "matched",
+      "sha256": "41f4921e83baf24c7f1b47cb181c9fe41d14aa270e62344925cb2e7a893d26be",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-04",
+      "scenario": "matched",
+      "sha256": "857768f7400cdc0116f3d6b17d601902fde2f18a88f17da3f002852657c5a85e",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-05",
+      "scenario": "matched",
+      "sha256": "750070837b5666d748fe5b018b850d3ce9b190e4d6f6066239da8588afe13a82",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-06",
+      "scenario": "matched",
+      "sha256": "96a574ff55e27f5418eadd77226c51a4954145d758259e428a0c600489c810a5",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-07",
+      "scenario": "matched",
+      "sha256": "274eb8325b4034bcf276046af9c6cda556cdba0b99327a0205156b31502b802f",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-08",
+      "scenario": "matched",
+      "sha256": "cc943fa8059ceb5351a81bf26e7972fff8bc0525f012089ad48015cebbbb675f",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-09",
+      "scenario": "matched",
+      "sha256": "df37e1e96650e47678d4b4cd583b822c4cf06f80feec903712c3fc08f4bfc0e3",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-10",
+      "scenario": "matched",
+      "sha256": "a7d1ea1ad60cdf8676409057d8b13507d1f857db7355c4e6f5d645a7430fd6b7",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-11",
+      "scenario": "absent",
+      "sha256": "24fb3ce83f5a5c7dbb7c11710b5a2aaaee0af8116b7a57e09ed370324ffba7be",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-12",
+      "scenario": "absent",
+      "sha256": "c7e4ff2b03542e22c9ade1ae71998f9459b036a5e629684b84a73ce2f9c3f601",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-13",
+      "scenario": "absent",
+      "sha256": "ede41be000d2b053870e28be3ee3a587259e12e91dfe561a36877d922e018c8d",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-14",
+      "scenario": "absent",
+      "sha256": "c29e484726bf8bdac88787704b108c8191d326eaffd0d1227b22babcd6de14df",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-15",
+      "scenario": "padding-match",
+      "sha256": "fc4ba0a58e6bb396fb032dae75eab735c6b852d568ce273ff190888de2d9614d",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-16",
+      "scenario": "padding-match",
+      "sha256": "060972c7d12aec7d065d386f34bbe09d5ad0fa8904529f13237abbb4868e4153",
+      "expected": "accepted"
+    },
+    {
+      "id": "PWD-17",
+      "scenario": "timeout",
+      "sha256": "b9187eb444c24c51f8a30c1f787e67ef28536ef6981820a499fbd4eda7e2c34e",
+      "expected": "accepted_reduced"
+    },
+    {
+      "id": "PWD-18",
+      "scenario": "unavailable",
+      "sha256": "0a89e699b15046a905f25e0fc763efa71f4ee3bbf7557ef3b35c1b8e5a9a61cf",
+      "expected": "accepted_reduced"
+    },
+    {
+      "id": "PWD-19",
+      "scenario": "malformed-response",
+      "sha256": "09da6d1d125e7ff775fc6ef9b3f1932748006b9adfde219fbfdb1664f3f28654",
+      "expected": "rejected"
+    },
+    {
+      "id": "PWD-20",
+      "scenario": "local-blocklist",
+      "sha256": "7683265d53ffa231d0d338194327b1c8fbc776e8ffe28d52ac09726e34e08f12",
+      "expected": "rejected"
+    }
+  ]
+}

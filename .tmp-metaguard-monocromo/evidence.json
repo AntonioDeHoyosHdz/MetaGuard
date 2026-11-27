@@ -1,0 +1,22 @@
+[
+  {
+    "language": "JavaScript / TypeScript",
+    "tool": "CodeQL",
+    "version": "2.27.4",
+    "files": 12,
+    "results": 0,
+    "rules": 103,
+    "sha256": "b8d26ebf3614fe702f3e3566a6d6251569104069df3c3e2f155540350e86781f",
+    "source": "frontend.sarif"
+  },
+  {
+    "language": "Python",
+    "tool": "CodeQL",
+    "version": "2.27.4",
+    "files": 75,
+    "results": 8,
+    "rules": 50,
+    "sha256": "0c14171f9aec64ca77a9be70212a7b194d11b3b633fdefd4f2b042f33287225f",
+    "source": "backend.sarif"
+  }
+]

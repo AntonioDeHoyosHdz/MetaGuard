@@ -1,0 +1,13 @@
+{
+  "time_utc": "2026-11-23T21:44:22.023Z",
+  "scope": "operator-only preview, fresh browser, GET only",
+  "https_page": 200,
+  "session_status": 200,
+  "authenticated": false,
+  "csrf_present": true,
+  "csrf_cookie_secure_httponly_samesite": true,
+  "no_store": true,
+  "login_form_visible": true,
+  "real_credentials_submitted": false,
+  "denied_from_frontend_private_vantage": 403
+}

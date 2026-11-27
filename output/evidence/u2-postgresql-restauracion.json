@@ -1,0 +1,14 @@
+{
+  "scope": "fresh loopback-only synthetic PostgreSQL; no live services or application secrets",
+  "migration": "0016_login_email_challenge",
+  "integration_tests": 6,
+  "table_count": 19,
+  "matching_rows": 4,
+  "constraint_count": 76,
+  "schema_text_identical": false,
+  "verdict_and_event_kind_constraints_behavior_match": true,
+  "restored_table_inventory_and_row_fingerprints_match": true,
+  "constraint_definitions_match_except_verified_cast_representations": true,
+  "restore_cascade_verified": true,
+  "source_not_mutated_by_restore_probe": true
+}

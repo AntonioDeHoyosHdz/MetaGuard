@@ -1,0 +1,22 @@
+[Unit]
+Description=MetaGuard public academic presentation (static only)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+RuntimeDirectory=metaguard-public-web
+RuntimeDirectoryMode=0755
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+ExecStartPre=/usr/sbin/nginx -t -c /etc/metaguard-public/nginx.conf
+ExecStart=/usr/sbin/nginx -c /etc/metaguard-public/nginx.conf
+ExecReload=/usr/sbin/nginx -t -c /etc/metaguard-public/nginx.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

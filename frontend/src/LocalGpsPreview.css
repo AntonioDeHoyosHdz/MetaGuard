@@ -1,0 +1,94 @@
+.local-gps-preview {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: clamp(12px, 2vw, 18px);
+  color: #171714;
+  background: #fffef9;
+  border: 1px solid #c8c5b9;
+  border-left: 4px solid #34372e;
+}
+
+.local-gps-preview h3 {
+  font-size: 1rem;
+}
+
+.local-gps-preview p {
+  font-size: .875rem;
+  line-height: 1.45;
+}
+
+.local-gps-toggle {
+  min-height: 44px;
+  padding: 8px 14px;
+  color: #171714;
+  background: #ffe600;
+  border: 1px solid #171714;
+  border-radius: 2px;
+  font-weight: 680;
+  text-align: start;
+}
+
+.local-gps-toggle:hover {
+  background: #fff39c;
+}
+
+.local-gps-toggle:focus-visible {
+  outline: 3px solid #00777c;
+  outline-offset: 2px;
+}
+
+.local-gps-preview [aria-live] {
+  width: 100%;
+}
+
+.local-gps-world {
+  width: 100%;
+  max-width: 42rem;
+  margin-top: 4px;
+}
+
+.local-gps-world svg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2;
+  background: #e8eee9;
+  border: 1px solid #78867a;
+}
+
+.local-gps-land {
+  fill: #aacbbe;
+  stroke: #45695f;
+  stroke-width: 1;
+}
+
+.local-gps-grid {
+  fill: none;
+  stroke: #45695f;
+  stroke-width: 1;
+  opacity: .24;
+}
+
+.local-gps-halo {
+  fill: #fffef9;
+  stroke: #171714;
+  stroke-width: 2;
+}
+
+.local-gps-point {
+  fill: #ffe600;
+  stroke: #171714;
+  stroke-width: 2;
+}
+
+.local-gps-world figcaption {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  font-size: .8125rem;
+}
+
+.local-gps-world figcaption strong {
+  font-variant-numeric: tabular-nums;
+}

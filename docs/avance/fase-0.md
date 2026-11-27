@@ -23,7 +23,7 @@ Los criterios exactos de éxito están transcritos en `docs/trazabilidad.md`. El
 ## Inventario y contradicciones
 
 - Raíz: propuesta U2, `.codex/` y un checkout independiente `gentle-ai/`; el checkout de Gentle no es una implementación de MetaGuard.
-- No existe una raíz Git para MetaGuard (`git status` falla con “fatal: not a git repository”). El checkout `gentle-ai/` sí tiene Git y está limpio, pero no debe confundirse con el repositorio de la aplicación.
+- En la revisión Fase 0, la raíz todavía no era Git (`git status` falló con “fatal: not a git repository”). Después, durante la publicación solicitada por el usuario, se inicializó y subió a GitHub. El checkout `gentle-ai/` es aparte y no es la aplicación.
 - Faltan el backend, frontend, procesador aislado, infraestructura, corpus, diseño, documentación de MetaGuard y pruebas descritos en el prompt.
 - No se halló implementación que contradiga la propuesta; la falta de artefactos impide comprobar el cumplimiento.
 
@@ -49,7 +49,7 @@ Los criterios exactos de éxito están transcritos en `docs/trazabilidad.md`. El
 4. ¿Cuál será el flujo concreto de recuperación de cuenta (códigos de respaldo, recuperación por correo, espera y desbloqueo)? No está definido en la propuesta.
 5. ¿Qué fechas reales y responsables se asignan a las fases? La propuesta establece el orden de tres fases, no un calendario fechado.
 6. ¿Cuál será la composición y el proceso de generación reproducible del corpus? La propuesta exige 20 archivos para OBJ-03 y 10 PDFs activos para OBJ-06; el prompt amplía detalles del corpus, que aún debe concretarse.
-7. ¿Se puede abrir este proyecto como repositorio Git propio, y cuál es el mecanismo para tener disponibles los comandos Gentle en el entorno de trabajo? La raíz actual no es Git y los comandos slash no son accesibles desde este shell.
+7. ¿Cuál es el mecanismo para tener disponibles los comandos Gentle en el entorno de trabajo? La raíz Git ya se creó y publicó después de esta revisión; los comandos slash siguen sin ser accesibles desde este shell.
 
 ## Hecho
 
@@ -64,7 +64,7 @@ Los criterios exactos de éxito están transcritos en `docs/trazabilidad.md`. El
 
 ## Riesgos y bloqueos
 
-- Sin repositorio Git de MetaGuard, historial de commits y trazabilidad de cambios no pueden garantizarse todavía.
+- En Fase 0 no había historial Git local; ese riesgo quedó resuelto para los artefactos actuales al crear el repositorio privado y publicar commits.
 - Ausencia de decisiones cuantitativas/operativas puede bloquear límites, seguridad de claves, recuperación y cronograma.
 - La interfaz de Gentle no estuvo disponible; estado y capacidades de sus comandos no verificados.
 

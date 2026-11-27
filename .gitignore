@@ -1,6 +1,10 @@
 # Local Codex configuration
 /.codex/
 
+# Local agent skill indexes and memory configuration may contain machine-specific paths
+/.atl/
+/.engram/
+
 # Separate Gentle source checkout; not part of MetaGuard
 /gentle-ai/
 
@@ -11,9 +15,14 @@
 
 # Generated or local dependencies
 **/node_modules/
+/frontend/dist/
 **/.venv/
 **/venv/
 **/__pycache__/
 *.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.coverage
+**/coverage.xml
 .DS_Store
 Thumbs.db
